@@ -49,7 +49,7 @@ impl AddressingMode {
                 let addr: u16 = cpu.mem_read(cpu.program_counter) as u16;
                 let dereferenced_addr: u16 = cpu.mem_read_u16(addr);
                 
-                cpu.mem_read(dereferenced_addr.wrapping_add(cpu.reg_y as u16)) as u16
+                dereferenced_addr.wrapping_add(cpu.reg_y as u16) as u16
             },
             AddressingMode::NoneAddressing => {
                 panic!("mode {:?} is not supported", self);

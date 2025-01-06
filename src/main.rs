@@ -1,8 +1,8 @@
 mod AddressingModes;
-pub mod Opcodes;
+mod OpCodes;
 
 use AddressingModes::AddressingMode;
-use Opcodes::{OpCode, OPCODES_MAP};
+use OpCodes::{OpCode, OPCODES_MAP};
 
 struct CPU {
     // TODO: need to set these private and make getters/setters
@@ -84,7 +84,10 @@ impl CPU {
 
             match curr_instruction {
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode.get_mode()),
+                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(opcode.get_mode()),
+                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(opcode.get_mode()),
+                0x86 | 0x96 | 0x8E => self.stx(opcode.get_mode()),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
                 0x00 => { // BRK command
@@ -93,7 +96,7 @@ impl CPU {
                 _ => todo!("Instruction {curr_instruction} hasn't been implemented yet or is invalid")
             }
 
-            if (initial_program_counter == self.program_counter) {
+            if initial_program_counter == self.program_counter {
                 self.program_counter += (opcode.get_num_bytes() - 1) as u16;
             }
         }
@@ -102,38 +105,21 @@ impl CPU {
 
     //-- CPU Instructions
 
+    // Reference: https://www.nesdev.org/obelisk-6502-guide/reference.html
+
     fn lda(&mut self, mode: &AddressingMode) {
-        //A9 is the LDA instruction, it has 2 bytes length therefore the second byte is a parameter
         let param = self.mem_read(mode.get_operand_address(&self));
         self.reg_a = param;
-        
-        /*
-            According to this reference: https://www.nesdev.org/obelisk-6502-guide/reference.html#LDA
-            this operation needs to set the 0 flag if the number is 0 and set the negative flag to 1 if bit 7 of A is set
-
-            I think when they say bit 7 they probably started indexing from bit 0 instead of bit 1
-        */
-        
+                
         self.set_zero_and_negative_flag(self.reg_a);
     }
 
     fn tax(&mut self) {
-        /*
-            According to this reference: https://www.nesdev.org/obelisk-6502-guide/reference.html#TAX
-            This operation needs to set the zero flag and negative flag depending on the value of register x
-        */
         self.reg_x = self.reg_a;
-        
         self.set_zero_and_negative_flag(self.reg_x);
     }
 
     fn inx(&mut self) {
-
-        /*
-            According to this reference: https://www.nesdev.org/obelisk-6502-guide/reference.html#INX
-            This operation needs to set the zero flag and negative flag depending on the value of register x
-        */
-
         self.reg_x = self.reg_x.wrapping_add(1);
         self.set_zero_and_negative_flag(self.reg_x);
     }
@@ -141,6 +127,28 @@ impl CPU {
     fn sta(&mut self, mode: &AddressingMode) {
         let addr: u16 = mode.get_operand_address(self);
         self.mem_write(addr, self.reg_a);
+    }
+
+    fn stx(&mut self, mode: &AddressingMode) {
+        // Missing unit tests
+        let addr: u16 = mode.get_operand_address(self);
+        self.mem_write(addr, self.reg_x);
+    }
+
+    fn ldx(&mut self, mode: &AddressingMode) {
+        // Missing unit tests
+        let param = self.mem_read(mode.get_operand_address(&self));
+        self.reg_x = param;
+        
+        self.set_zero_and_negative_flag(self.reg_x);
+    }
+
+    fn ldy(&mut self, mode: &AddressingMode) {
+        // Missing unit tests
+        let param = self.mem_read(mode.get_operand_address(&self));
+        self.reg_y = param;
+        
+        self.set_zero_and_negative_flag(self.reg_y);
     }
 
     //-- Helper methods
@@ -195,36 +203,79 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-   use super::*;
-    
-
+    use super::*;
+   
     // ---------- LDA tests
-   #[test]
-   fn test_0xa9_lda_immediate_load_data() {
+    #[test]
+    fn test_0xa9_lda_immediate_load_data() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x05);
         assert!(cpu.state & 0b0000_0010 == 0b00);
         assert!(cpu.state & 0b1000_0000 == 0);
-   }
+    }
 
-   #[test]
-   fn test_0xa5_lda_zero_page() {
+    #[test]
+    fn test_0xa5_lda_zero_page() {
         let mut cpu = CPU::new();
         cpu.memory[0x05] = 0x09; // Assign value 9 to memory location 0x05
         cpu.load_and_run(vec![0xa5, 0x05, 0x00]); // Load value at memory location 0x05 using lda
         assert_eq!(cpu.reg_a, 0x09);
-   }
+    }
 
-   #[test]
-   fn test_0xb5_lda_zero_page_x() {
-        // TEST IS BROKEN, reset function sets reg_x to 0 so I need to actually implement the STX function first
+    #[test]
+    fn test_0xb5_lda_zero_page_x() {
         let mut cpu = CPU::new();
-        cpu.reg_x = 0x05;
         cpu.memory[0x09] = 0x07; // Assign value 7 to memory location 0x09 (0x05 + 0x04)
-        cpu.load_and_run(vec![0xb5, 0x04, 0x00]); // Load value at memory location 0x05 using lda
+        cpu.load_and_run(vec![0xa2, 0x05, 0xb5, 0x04, 0x00]); // Load 0x05 into reg_x, then load A with the value stored at 0x04 + reg_x (0x04+0x05=0x09) which has value 7
         assert_eq!(cpu.reg_a, 0x07);
-   }
+    }
+
+    #[test]
+    fn test_0xad_lda_absolute() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x07;
+        cpu.load_and_run(vec![0xad, 0x00, 0x10, 0x00]); // LDA $1000 (little endian so its bytes 0x00 and then 0x10)
+        assert_eq!(cpu.reg_a, 0x07);
+    }
+
+    #[test]
+    fn test_0xad_lda_absolute_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xbd, 0x00, 0x10, 0x00]); //Load 0x05 into reg_x then LDA $1000,X (0x1000+0x0005=0x1005)
+        assert_eq!(cpu.reg_a, 0x07);
+    }
+
+    #[test]
+    fn test_0xad_lda_absolute_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa0, 0x05, 0xb9, 0x00, 0x10, 0x00]); //Load 0x05 into reg_y then LDA $1000,Y (0x1000+0x0005=0x1005)
+        assert_eq!(cpu.reg_a, 0x07);
+    }
+
+    #[test]
+    fn test_0xad_lda_indirect_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        // Little endian storage of address 1005 (least significant [0x05] first then most [0x10])
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xa1, 0x05, 0x00]); //Load 0x05 into reg_x then LDA ($05,X) (0x05 + 0x05 = 0x0a => address referenced at 0x0a = 0x1005)
+        assert_eq!(cpu.reg_a, 0x07);
+    }
+
+    #[test]
+    fn test_0xad_lda_indirect_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x100a] = 0x07;
+        // Little endian storage of address 1005 (least significant [0x05] first then most [0x10])
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa0, 0x05, 0xb1, 0x0a, 0x00]); //Load 0x05 into reg_y then LDA ($0a),Y (addr referenced at 0x0a => 0x1005, add x (0x05) => 0x100a)
+        assert_eq!(cpu.reg_a, 0x07);
+    }
 
     #[test]
     fn test_0xa9_lda_zero_flag() {
@@ -241,8 +292,8 @@ mod test {
     }
     
 
-    #[test]
     // ---------- TAX tests
+    #[test]
     fn test_0xaa_tax_a_is_zero() {
         let mut cpu: CPU = CPU::new();
         let program: Vec<u8> = vec![0xa9, 0x00, 0xaa, 0x00]; // Transfer value 0 into accumulator and TAX
