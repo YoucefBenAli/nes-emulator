@@ -291,6 +291,91 @@ mod test {
         assert!(cpu.is_negative_flag_set());
     }
     
+    // ---------- LDX tests
+
+    #[test]
+    fn test_0xa2_ldx_immediate_load_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0x00]);
+        assert_eq!(cpu.reg_x, 0x05);
+        assert!(cpu.state & 0b0000_0010 == 0b00);
+        assert!(cpu.state & 0b1000_0000 == 0);
+    }
+
+    #[test]
+    fn test_0xa6_ldx_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x09; // Assign value 9 to memory location 0x05
+        cpu.load_and_run(vec![0xa6, 0x05, 0x00]); // Load value at memory location 0x05 using lda
+        assert_eq!(cpu.reg_x, 0x09);
+    }
+
+    #[test]
+    fn test_0xb6_ldx_zero_page_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x09] = 0x07; // Assign value 7 to memory location 0x09 (0x05 + 0x04)
+        cpu.load_and_run(vec![0xa0, 0x05, 0xb6, 0x04, 0x00]); // Load 0x05 into reg_y, then load A with the value stored at 0x04 + reg_y (0x04+0x05=0x09) which has value 7
+        assert_eq!(cpu.reg_x, 0x07);
+    }
+
+    #[test]
+    fn test_0xae_ldx_absolute() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x07;
+        cpu.load_and_run(vec![0xae, 0x00, 0x10, 0x00]); // LDX $1000 (little endian so its bytes 0x00 and then 0x10)
+        assert_eq!(cpu.reg_x, 0x07);
+    }
+
+    #[test]
+    fn test_0xbe_ldx_absolute_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa0, 0x05, 0xbe, 0x00, 0x10, 0x00]); //Load 0x05 into reg_y then LDX $1000,Y (0x1000+0x0005=0x1005)
+        assert_eq!(cpu.reg_x, 0x07);
+    }
+
+    // ---------- LDY tests
+
+    #[test]
+    fn test_0xa0_ldy_immediate_load_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0, 0x05, 0x00]);
+        assert_eq!(cpu.reg_y, 0x05);
+        assert!(cpu.state & 0b0000_0010 == 0b00);
+        assert!(cpu.state & 0b1000_0000 == 0);
+    }
+
+    #[test]
+    fn test_0xa4_ldy_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x09;
+        cpu.load_and_run(vec![0xa4, 0x05, 0x00]);
+        assert_eq!(cpu.reg_y, 0x09);
+    }
+
+    #[test]
+    fn test_0xb4_lda_zero_page_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x09] = 0x07;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xb4, 0x04, 0x00]);
+        assert_eq!(cpu.reg_y, 0x07);
+    }
+
+    #[test]
+    fn test_0xac_ldy_absolute() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x07;
+        cpu.load_and_run(vec![0xac, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_y, 0x07);
+    }
+
+    #[test]
+    fn test_0xbc_ldy_absolute_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xbc, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_y, 0x07);
+    }
 
     // ---------- TAX tests
     #[test]
