@@ -83,6 +83,7 @@ impl CPU {
             let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect("Instruction: {curr_instruction} not found");
 
             match curr_instruction {
+                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(opcode.get_mode()),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode.get_mode()),
                 0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(opcode.get_mode()),
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
@@ -151,6 +152,26 @@ impl CPU {
         self.set_zero_and_negative_flag(self.reg_y);
     }
 
+    fn adc(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        let mut sum_as_u16: u16 = self.reg_a as u16 + param as u16;
+        if self.is_carry_flag_set() {
+            sum_as_u16 += 1;
+        }
+
+        let sum_as_u8: u8 = sum_as_u16.to_be_bytes()[1]; // Get last 8 bits
+
+        self.set_carry_flag(sum_as_u16 > 0b1111_1111);
+        self.set_overflow_flag(
+            ((param ^ sum_as_u8) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
+        );
+        self.set_zero_and_negative_flag(sum_as_u8);
+        
+        self.reg_a = sum_as_u8;
+
+    }
+
     //-- Helper methods
 
     /// Sets the zero flag if value is 0 and negative flag if value is negative
@@ -176,6 +197,22 @@ impl CPU {
         }
     }
 
+    fn set_carry_flag(&mut self, carry: bool) {
+        if carry {
+            self.state |= 0b0000_0001;
+        } else {
+            self.state &= 0b1111_1110;
+        }
+    }
+
+    fn set_overflow_flag(&mut self, carry: bool) {
+        if carry {
+            self.state |= 0b0100_0000;
+        } else {
+            self.state &= 0b1011_1111;
+        }
+    }
+
     fn is_register_negative(register_value: u8) -> bool {
         //the negative flag is set if bit 7 (last bit) is 1
         register_value & 0b1000_0000 != 0
@@ -193,6 +230,14 @@ impl CPU {
 
     fn is_negative_flag_set(&self) -> bool {
         self.state & 0b1000_0000 != 0
+    }
+
+    fn is_carry_flag_set(&self) -> bool {
+        self.state & 0b0000_0001 != 0
+    }
+
+    fn is_overflow_flag_set(&self) -> bool {
+        self.state & 0b0100_0000 != 0
     }
 
 }
@@ -439,6 +484,130 @@ mod test {
         assert_eq!(cpu.reg_x, 0);
     }
 
+    // ADC tests
+    #[test]
+    fn test_0x69_adc_cause_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x69, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x04);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x69_adc_cause_positive_into_negative_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7f, 0x69, 0x01, 0x00]); // 0111 1111 + 0000 0001 => 127 + 1 => -128
+        assert_eq!(cpu.reg_a, 0x80); // 1000 0000 => 0x80
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x69_adc_cause_negative_into_positive_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x69, 0x80, 0x00]); // 1111 1111 + 1000 0000 => -1 - 128 => 127
+        assert_eq!(cpu.reg_a, 0x7f); // 0111 1111 => 0x7F
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x69_adc_immediate() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x69, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x65_adc_immediate_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x09;
+        cpu.load_and_run(vec![0x65, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x09);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x75_adc_immediate_zero_page_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x09] = 0x07;
+        cpu.load_and_run(vec![0xa2, 0x05, 0x75, 0x04, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x6d_adc_immediate_absolute() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x07;
+        cpu.load_and_run(vec![0x6d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x7d_adc_immediate_absolute_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa2, 0x05, 0x7d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x79_adc_immediate_absolute_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.load_and_run(vec![0xa0, 0x05, 0x79, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x61_adc_immediate_indirect_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x07;
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa2, 0x05, 0x61, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+    }
+
+    #[test]
+    fn test_0x71_lda_indirect_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x100a] = 0x07;
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa0, 0x05, 0x71, 0x0a, 0x00]);
+        assert_eq!(cpu.reg_a, 0x07);
+    }
     // ----------- Extra tests from the book
     #[test]
     fn test_5_ops_working_together() {
