@@ -84,6 +84,7 @@ impl CPU {
 
             match curr_instruction {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(opcode.get_mode()),
+                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(opcode.get_mode()),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode.get_mode()),
                 0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(opcode.get_mode()),
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
@@ -170,6 +171,14 @@ impl CPU {
         
         self.reg_a = sum_as_u8;
 
+    }
+
+    fn and(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        self.reg_a = self.reg_a & param;
+
+        self.set_zero_and_negative_flag(self.reg_a);
     }
 
     //-- Helper methods
@@ -484,7 +493,7 @@ mod test {
         assert_eq!(cpu.reg_x, 0);
     }
 
-    // ADC tests
+    // ---------- ADC tests
     #[test]
     fn test_0x69_adc_cause_carry() {
         let mut cpu = CPU::new();
@@ -608,6 +617,110 @@ mod test {
         cpu.load_and_run(vec![0xa0, 0x05, 0x71, 0x0a, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
     }
+
+    // ---------- AND tests
+
+    #[test]
+    fn test_0x29_and_immediate() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x29, 0x0F, 0x00]); // LDA #$FF; AND #$0F => 1111_1111 & 0000_1111 => 0000_1111 => 0x0F
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x25_and_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x0F;
+        cpu.load_and_run(vec![0xa9, 0xff, 0x25, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x35_and_zero_page_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x09] = 0x0F;
+        cpu.load_and_run(vec![0xa2, 0x04, 0xa9, 0xff, 0x35, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x2d_and_absolute() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x0F;
+        cpu.load_and_run(vec![0xa9, 0xff, 0x2d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x3d_and_absolute_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x0F;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xa9, 0xff, 0x3d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x39_and_absolute_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x0F;
+        cpu.load_and_run(vec![0xa0, 0x05, 0xa9, 0xff, 0x39, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x21_and_indirect_x() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x1005] = 0x0F;
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa2, 0x05, 0xa9, 0xff, 0x21, 0x05, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x31_and_indirect_y() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x100a] = 0x0F;
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa0, 0x05, 0xa9, 0xff, 0x31, 0x0a, 0x00]);
+        assert_eq!(cpu.reg_a, 0x0F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x29_and_test_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x29, 0x00, 0x00]);
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x29_and_test_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x29, 0x80, 0x00]); // 1111_1111 & 1000_0000
+        assert_eq!(cpu.reg_a, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
     // ----------- Extra tests from the book
     #[test]
     fn test_5_ops_working_together() {
