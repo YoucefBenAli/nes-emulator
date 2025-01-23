@@ -93,6 +93,7 @@ impl CPU {
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(opcode.get_mode()),
                 0x86 | 0x96 | 0x8E => self.stx(opcode.get_mode()),
+                0x38 => self.sec(),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
                 0x00 => { // BRK command
@@ -203,6 +204,10 @@ impl CPU {
             self.mem_write(mode.get_operand_address(&self), new_val);
         }
         
+    }
+
+    fn sec(&mut self) {
+        self.set_carry_flag(true);
     }
 
     //-- Helper methods
@@ -806,6 +811,15 @@ mod test {
         assert_eq!(cpu.memory[0x05], 0x00);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    // ---------- SEC tests
+
+    #[test]
+    fn test_0x38_sec() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0x00]); // LDA #$01; ASL
         assert!(cpu.is_carry_flag_set());
     }
 
