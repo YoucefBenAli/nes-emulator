@@ -1,6 +1,8 @@
 mod AddressingModes;
 mod OpCodes;
 
+use std::ops::Add;
+
 use AddressingModes::AddressingMode;
 use OpCodes::{OpCode, OPCODES_MAP};
 
@@ -86,6 +88,7 @@ impl CPU {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(opcode.get_mode()),
                 0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(opcode.get_mode()),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode.get_mode()),
+                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(opcode.get_mode()),
                 0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(opcode.get_mode()),
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(opcode.get_mode()),
@@ -179,6 +182,27 @@ impl CPU {
         self.reg_a = self.reg_a & param;
 
         self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn asl(&mut self, mode: &AddressingMode) {
+        let param: u8 = match mode {
+            AddressingMode::NoneAddressing => self.reg_a,
+            _ => self.mem_read(mode.get_operand_address(&self))
+        };
+
+        let new_val: u8 = param << 1;
+
+        self.set_carry_flag((param & 0b1000_0000) != 0);
+
+        self.set_negative_flag((new_val & 0b1000_0000) != 0);
+
+        if let AddressingMode::NoneAddressing = mode {
+            self.reg_a = new_val;
+            self.set_zero_and_negative_flag(self.reg_a);
+        } else {
+            self.mem_write(mode.get_operand_address(&self), new_val);
+        }
+        
     }
 
     //-- Helper methods
@@ -719,6 +743,70 @@ mod test {
         assert_eq!(cpu.reg_a, 0x80);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- ASL tests
+
+    #[test]
+    fn test_0x0a_asl_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0x0a, 0x00]); // LDA #$01; ASL
+        assert_eq!(cpu.reg_a, 0x02);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x06_asl_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x01;
+        cpu.load_and_run(vec![0x06, 0x05, 0x00]);
+        assert_eq!(cpu.memory[0x05], 0x02);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x0a_asl_carry_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x81, 0x0a, 0x00]); // 1000_0000 => 0000_0010
+        assert_eq!(cpu.reg_a, 0x02);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x0a_asl_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0x0a, 0x00]); // 0000_0000 => 0000_0000
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x0a_asl_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x40, 0x0a, 0x00]); // 0100_0000 => 1000_0000
+        assert_eq!(cpu.reg_a, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x06_asl_zero_page_doesnt_change_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x80;
+        cpu.load_and_run(vec![0x06, 0x05, 0x00]);
+        assert_eq!(cpu.memory[0x05], 0x00);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
     }
 
     // ----------- Extra tests from the book
