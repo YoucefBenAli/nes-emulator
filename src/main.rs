@@ -83,16 +83,20 @@ impl CPU {
             let initial_program_counter: u16 = self.program_counter;
 
             let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect("Instruction: {curr_instruction} not found");
+            let mode: &AddressingMode = opcode.get_mode();
 
             match curr_instruction {
-                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(opcode.get_mode()),
-                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(opcode.get_mode()),
-                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode.get_mode()),
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(opcode.get_mode()),
-                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(opcode.get_mode()),
-                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(opcode.get_mode()),
-                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(opcode.get_mode()),
-                0x86 | 0x96 | 0x8E => self.stx(opcode.get_mode()),
+                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(mode),
+                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(mode),
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(mode),
+                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(mode),
+                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(mode),
+                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(mode),
+                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(mode),
+                0x86 | 0x96 | 0x8E => self.stx(mode),
+                0xb0 => self.bcs(mode),
+                0x90 => self.bcc(mode),
+                0xf0 => self.beq(mode),
                 0x38 => self.sec(),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
@@ -113,13 +117,6 @@ impl CPU {
 
     // Reference: https://www.nesdev.org/obelisk-6502-guide/reference.html
 
-    fn lda(&mut self, mode: &AddressingMode) {
-        let param = self.mem_read(mode.get_operand_address(&self));
-        self.reg_a = param;
-                
-        self.set_zero_and_negative_flag(self.reg_a);
-    }
-
     fn tax(&mut self) {
         self.reg_x = self.reg_a;
         self.set_zero_and_negative_flag(self.reg_x);
@@ -128,6 +125,17 @@ impl CPU {
     fn inx(&mut self) {
         self.reg_x = self.reg_x.wrapping_add(1);
         self.set_zero_and_negative_flag(self.reg_x);
+    }
+
+    fn sec(&mut self) {
+        self.set_carry_flag(true);
+    }
+
+    fn lda(&mut self, mode: &AddressingMode) {
+        let param = self.mem_read(mode.get_operand_address(&self));
+        self.reg_a = param;
+                
+        self.set_zero_and_negative_flag(self.reg_a);
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
@@ -206,11 +214,32 @@ impl CPU {
         
     }
 
-    fn sec(&mut self) {
-        self.set_carry_flag(true);
+    fn bcc(&mut self, mode: &AddressingMode) {
+        if !self.is_carry_flag_set() {
+            self.branch(mode);
+        }
     }
 
+    fn bcs(&mut self, mode: &AddressingMode) {
+        if self.is_carry_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+    fn beq(&mut self, mode: &AddressingMode) {
+        if self.is_zero_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+
     //-- Helper methods
+
+    fn branch(&mut self, mode: &AddressingMode) {
+        let param = self.mem_read(mode.get_operand_address(&self));
+        self.program_counter += 1; // Reading the byte containing the param
+        self.program_counter += param as u16;
+    }
 
     /// Sets the zero flag if value is 0 and negative flag if value is negative
     fn set_zero_and_negative_flag(&mut self, value: u8) {
@@ -819,8 +848,38 @@ mod test {
     #[test]
     fn test_0x38_sec() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0x38, 0x00]); // LDA #$01; ASL
+        cpu.load_and_run(vec![0x38, 0x00]);
         assert!(cpu.is_carry_flag_set());
+    }
+
+    // ---------- BCC tests
+
+    #[test]
+    fn test_0x90_bcc() {
+        // Program counter starts at 0x8000, read two instructions therefore it would be 8002
+        // Then add 10 to the PC
+        // Then read the next instruction which would be 0x00 since the memory is empty
+        // Therefore program counter= 0x8000 + 0x02 + 0x10 + 0x01
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x90, 0x10]);
+        assert_eq!(cpu.program_counter, 0x8013);
+    }
+
+    // ---------- BCS tests
+    #[test]
+    fn test_0xb0_bcs() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xb0, 0x10]);
+        assert_eq!(cpu.program_counter, 0x8014);
+    }
+
+    // ---------- BEQ tests
+    #[test]
+    fn test_0xf0_beq() {
+        //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0xf0, 0x10]);
+        assert_eq!(cpu.program_counter, 0x8015);
     }
 
     // ----------- Extra tests from the book
