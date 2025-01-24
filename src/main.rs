@@ -98,6 +98,9 @@ impl CPU {
                 0xb0 => self.bcs(mode),
                 0x90 => self.bcc(mode),
                 0xf0 => self.beq(mode),
+                0x30 => self.bmi(mode),
+                0xd0 => self.bne(mode),
+                0x10 => self.bpl(mode),
                 0x38 => self.sec(),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
@@ -232,6 +235,25 @@ impl CPU {
             self.branch(mode);
         }
     }
+
+    fn bne(&mut self, mode: &AddressingMode) {
+        if !self.is_zero_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+    fn bmi(&mut self, mode: &AddressingMode) {
+        if self.is_negative_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+    fn bpl(&mut self, mode: &AddressingMode) {
+        if !self.is_negative_flag_set() {
+            self.branch(mode);
+        }
+    }
+
 
     fn bit(&mut self, mode: &AddressingMode) {
         let mut param: u8 = self.mem_read(mode.get_operand_address(&self));
@@ -902,6 +924,52 @@ mod test {
         //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0xf0, 0x10]);
+        assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    // ---------- BNE tests
+    #[test]
+    fn test_0xd0_bne_zero_not_set() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0xd0, 0x10, 0x00]);
+        assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    // ---------- BNE tests
+    #[test]
+    fn test_0xd0_bne_zero_set() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0xd0, 0x10, 0x00]);
+        assert_eq!(cpu.program_counter, 0x8005);
+    }
+
+    // ---------- BMI tests
+    #[test]
+    fn test_0x30_bmi_is_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x30, 0x10, 0x00]); //Load negative value
+        assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    #[test]
+    fn test_0x30_bmi_is_positive() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0x30, 0x10, 0x00]); //Load negative value
+        assert_eq!(cpu.program_counter, 0x8005);
+    }
+
+    // ---------- BPL tests
+    #[test]
+    fn test_0x10_bpl_is_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x10, 0x10, 0x00]); //Load negative value
+        assert_eq!(cpu.program_counter, 0x8005);
+    }
+
+    #[test]
+    fn test_0x10_bpl_is_positive() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0x10, 0x10, 0x00]); //Load negative value
         assert_eq!(cpu.program_counter, 0x8015);
     }
 
