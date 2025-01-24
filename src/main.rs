@@ -101,6 +101,8 @@ impl CPU {
                 0x30 => self.bmi(mode),
                 0xd0 => self.bne(mode),
                 0x10 => self.bpl(mode),
+                0x50 => self.bvc(mode),
+                0x70 => self.bvs(mode),
                 0x38 => self.sec(),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
@@ -250,6 +252,18 @@ impl CPU {
 
     fn bpl(&mut self, mode: &AddressingMode) {
         if !self.is_negative_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+    fn bvc(&mut self, mode: &AddressingMode) {
+        if !self.is_overflow_flag_set() {
+            self.branch(mode);
+        }
+    }
+
+    fn bvs(&mut self, mode: &AddressingMode) {
+        if self.is_overflow_flag_set() {
             self.branch(mode);
         }
     }
@@ -947,14 +961,14 @@ mod test {
     #[test]
     fn test_0x30_bmi_is_negative() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0xFF, 0x30, 0x10, 0x00]); //Load negative value
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x30, 0x10, 0x00]);
         assert_eq!(cpu.program_counter, 0x8015);
     }
 
     #[test]
     fn test_0x30_bmi_is_positive() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0x00, 0x30, 0x10, 0x00]); //Load negative value
+        cpu.load_and_run(vec![0xa9, 0x00, 0x30, 0x10, 0x00]);
         assert_eq!(cpu.program_counter, 0x8005);
     }
 
@@ -962,15 +976,47 @@ mod test {
     #[test]
     fn test_0x10_bpl_is_negative() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0xFF, 0x10, 0x10, 0x00]); //Load negative value
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x10, 0x10, 0x00]);
         assert_eq!(cpu.program_counter, 0x8005);
     }
 
     #[test]
     fn test_0x10_bpl_is_positive() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0x00, 0x10, 0x10, 0x00]); //Load negative value
+        cpu.load_and_run(vec![0xa9, 0x00, 0x10, 0x10, 0x00]);
         assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    // ---------- BVC tests
+    #[test]
+    fn test_0x50_bvc_no_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x50, 0x10, 0x00]);
+        assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    #[test]
+    fn test_0x50_bvc_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7f, 0x69, 0x01, 0x50, 0x10, 0x00]); //Cause overflow then try branching
+        assert_eq!(cpu.program_counter, 0x8007);
+        assert!(cpu.is_overflow_flag_set());
+    }
+
+    // ---------- BVS tests
+    #[test]
+    fn test_0x70_bvs_no_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x70, 0x10, 0x00]);
+        assert_eq!(cpu.program_counter, 0x8005);
+    }
+
+    #[test]
+    fn test_0x70_bvs_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7f, 0x69, 0x01, 0x70, 0x10, 0x00]); //Cause overflow then try branching
+        assert_eq!(cpu.program_counter, 0x8017);
+        assert!(cpu.is_overflow_flag_set());
     }
 
     // ---------- BIT tests

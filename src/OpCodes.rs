@@ -114,6 +114,10 @@ lazy_static! {
         OpCode::new(0xD0, "BNE", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
 
         OpCode::new(0x10, "BPL", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+
+        OpCode::new(0x50, "BVC", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+
+        OpCode::new(0x70, "BVS", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);
