@@ -4,7 +4,8 @@ mod OpCodes;
 use std::ops::Add;
 
 use AddressingModes::AddressingMode;
-use OpCodes::{OpCode, OPCODES_MAP};
+use OpCodes::{Mnemonic, OpCode, OPCODES_MAP};
+use OpCodes::Mnemonic::*;
 
 struct CPU {
     // TODO: need to set these private and make getters/setters
@@ -84,36 +85,37 @@ impl CPU {
 
             let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect(&format!("Instruction: {curr_instruction} not found"));
             let mode: &AddressingMode = opcode.get_mode();
+            let instruction: Mnemonic = opcode.get_instruction();
 
-            match curr_instruction {
-                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(mode),
-                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => self.and(mode),
-                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(mode),
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(mode),
-                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => self.ldx(mode),
-                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(mode),
-                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(mode),
-                0x86 | 0x96 | 0x8E => self.stx(mode),
-                0x24 | 0x2C => self.bit(mode),
-                0xb0 => self.bcs(mode),
-                0x90 => self.bcc(mode),
-                0xf0 => self.beq(mode),
-                0x30 => self.bmi(mode),
-                0xd0 => self.bne(mode),
-                0x10 => self.bpl(mode),
-                0x50 => self.bvc(mode),
-                0x70 => self.bvs(mode),
-                0xAA => self.tax(),
-                0xE8 => self.inx(),
-                0x18 => self.clc(),
-                0xD8 => self.cld(),
-                0x58 => self.cli(),
-                0xB8 => self.clv(),
-                0x38 => self.sec(),
-                0xF8 => self.sed(),
-                0x78 => self.sei(),
+            match instruction {
+                ADC => self.adc(mode),
+                AND => self.and(mode),
+                LDA => self.lda(mode),
+                ASL => self.asl(mode),
+                LDX => self.ldx(mode),
+                LDY => self.ldy(mode),
+                STA => self.sta(mode),
+                STX => self.stx(mode),
+                BIT => self.bit(mode),
+                BCS => self.bcs(mode),
+                BCC => self.bcc(mode),
+                BEQ => self.beq(mode),
+                BMI => self.bmi(mode),
+                BNE => self.bne(mode),
+                BPL => self.bpl(mode),
+                BVC => self.bvc(mode),
+                BVS => self.bvs(mode),
+                TAX => self.tax(),
+                INX => self.inx(),
+                CLC => self.clc(),
+                CLD => self.cld(),
+                CLI => self.cli(),
+                CLV => self.clv(),
+                SEC => self.sec(),
+                SED => self.sed(),
+                SEI => self.sei(),
 
-                0x00 => { // BRK command
+                BRK => {
                     break;
                 }
                 _ => todo!("Instruction {curr_instruction} hasn't been implemented yet or is invalid")
