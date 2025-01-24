@@ -82,7 +82,7 @@ impl CPU {
             self.program_counter += 1;
             let initial_program_counter: u16 = self.program_counter;
 
-            let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect("Instruction: {curr_instruction} not found");
+            let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect(&format!("Instruction: {curr_instruction} not found"));
             let mode: &AddressingMode = opcode.get_mode();
 
             match curr_instruction {
@@ -94,6 +94,7 @@ impl CPU {
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => self.ldy(mode),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(mode),
                 0x86 | 0x96 | 0x8E => self.stx(mode),
+                0x24 | 0x2C => self.bit(mode),
                 0xb0 => self.bcs(mode),
                 0x90 => self.bcc(mode),
                 0xf0 => self.beq(mode),
@@ -232,8 +233,30 @@ impl CPU {
         }
     }
 
+    fn bit(&mut self, mode: &AddressingMode) {
+        let mut param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        let result = self.reg_a & param;
+        
+        // Z 	Zero Flag 	    Set if the result if the AND is zero
+        // V 	Overflow Flag 	Set to bit 6 of the memory value
+        // N 	Negative Flag 	Set to bit 7 of the memory value
+        self.set_zero_flag(result==0);
+        self.set_overflow_flag(Self::check_bit_set(param, 6));
+        self.set_negative_flag(Self::check_bit_set(param, 7));
+    }
+
 
     //-- Helper methods
+
+    /// Returns true if the bit_to_check bit is set in param where bit 7 is the most significant bit and bit 0 is the least significant bit
+    fn check_bit_set(param: u8, bit_to_check: u8) -> bool {
+        if (bit_to_check >= 8) {
+            panic!("Cant check above bit 7");
+        }
+
+        (param & (1 << bit_to_check)) != 0
+    }
 
     fn branch(&mut self, mode: &AddressingMode) {
         let param = self.mem_read(mode.get_operand_address(&self));
@@ -272,8 +295,8 @@ impl CPU {
         }
     }
 
-    fn set_overflow_flag(&mut self, carry: bool) {
-        if carry {
+    fn set_overflow_flag(&mut self, overflow: bool) {
+        if overflow {
             self.state |= 0b0100_0000;
         } else {
             self.state &= 0b1011_1111;
@@ -880,6 +903,43 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0xf0, 0x10]);
         assert_eq!(cpu.program_counter, 0x8015);
+    }
+
+    // ---------- BIT tests
+    #[test]
+    fn test_0x24_bit_result_zero() {
+        //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x00;
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x24, 0x05]);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+    }
+
+    #[test]
+    fn test_0x2c_bit_overflow_flag_set() {
+        //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x40; // 0100_0000
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x2c, 0x00, 0x10]);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+    }
+
+    #[test]
+    fn test_0x2c_bit_negative_flag_set() {
+        //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
+        let mut cpu = CPU::new();
+        cpu.memory[0x1000] = 0x80; // 1000_0000
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x2c, 0x00, 0x10]);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
     }
 
     // ----------- Extra tests from the book
