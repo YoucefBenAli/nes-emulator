@@ -103,9 +103,16 @@ impl CPU {
                 0x10 => self.bpl(mode),
                 0x50 => self.bvc(mode),
                 0x70 => self.bvs(mode),
-                0x38 => self.sec(),
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
+                0x18 => self.clc(),
+                0xD8 => self.cld(),
+                0x58 => self.cli(),
+                0xB8 => self.clv(),
+                0x38 => self.sec(),
+                0xF8 => self.sed(),
+                0x78 => self.sei(),
+
                 0x00 => { // BRK command
                     break;
                 }
@@ -131,10 +138,6 @@ impl CPU {
     fn inx(&mut self) {
         self.reg_x = self.reg_x.wrapping_add(1);
         self.set_zero_and_negative_flag(self.reg_x);
-    }
-
-    fn sec(&mut self) {
-        self.set_carry_flag(true);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -282,6 +285,33 @@ impl CPU {
         self.set_negative_flag(Self::check_bit_set(param, 7));
     }
 
+    fn clc(&mut self) {
+        self.set_carry_flag(false);
+    }
+
+    fn cld(&mut self) {
+        self.set_decimal_flag(false);
+    }
+
+    fn cli(&mut self) {
+        self.set_interrupt_flag(false);
+    }
+
+    fn clv(&mut self) {
+        self.set_overflow_flag(false);
+    }
+
+    fn sec(&mut self) {
+        self.set_carry_flag(true);
+    }
+
+    fn sed(&mut self) {
+        self.set_decimal_flag(true);
+    }
+
+    fn sei(&mut self) {
+        self.set_interrupt_flag(true);
+    }
 
     //-- Helper methods
 
@@ -339,6 +369,30 @@ impl CPU {
         }
     }
 
+    fn set_break_flag(&mut self, break_flag: bool) {
+        if break_flag {
+            self.state |= 0b0001_0000;
+        } else {
+            self.state &= 0b1110_1111;
+        }
+    }
+
+    fn set_decimal_flag(&mut self, decimal: bool) {
+        if decimal {
+            self.state |= 0b0000_1000;
+        } else {
+            self.state &= 0b1111_0111;
+        }
+    }
+
+    fn set_interrupt_flag(&mut self, interrupt: bool) {
+        if interrupt {
+            self.state |= 0b0000_0100;
+        } else {
+            self.state &= 0b1111_1011;
+        }
+    }
+
     fn is_register_negative(register_value: u8) -> bool {
         //the negative flag is set if bit 7 (last bit) is 1
         register_value & 0b1000_0000 != 0
@@ -364,6 +418,18 @@ impl CPU {
 
     fn is_overflow_flag_set(&self) -> bool {
         self.state & 0b0100_0000 != 0
+    }
+
+    fn is_break_flag_set(&self) -> bool {
+        self.state & 0b0001_0000 != 0
+    }
+
+    fn is_decimal_flag_set(&self) -> bool {
+        self.state & 0b0000_1000 != 0
+    }
+
+    fn is_interrupt_flag_set(&self) -> bool {
+        self.state & 0b0000_0100 != 0
     }
 
 }
@@ -1054,6 +1120,62 @@ mod test {
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
         assert!(!cpu.is_overflow_flag_set());
+    }
+
+    // ---------- CLC tests
+    #[test]
+    fn test_0x18_clc_clear_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xff, 0x69, 0x05, 0x18, 0x00]);
+        assert_eq!(cpu.reg_a, 0x04);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    // ---------- CLV tests
+    #[test]
+    fn test_0xb8_clv_clear_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7f, 0x69, 0x01, 0xb8, 0x00]);
+        assert_eq!(cpu.reg_a, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    // ---------- CLD tests
+    #[test]
+    fn test_0xd8_cld_clear_decimal() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xf8, 0xd8, 0x00]);
+        assert!(!cpu.is_decimal_flag_set())
+    }
+
+    // ---------- CLI tests
+    #[test]
+    fn test_0x58_cli_clear_decimal() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x78, 0x58, 0x00]);
+        assert!(!cpu.is_interrupt_flag_set())
+    }
+
+    // ---------- SED tests
+    #[test]
+    fn test_0xf8_sed_set_decimal() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xf8, 0x00]);
+        assert!(cpu.is_decimal_flag_set())
+    }
+
+    // ---------- SEI tests
+    #[test]
+    fn test_0x78_sei_set_interupt() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x78, 0x00]);
+        assert!(cpu.is_interrupt_flag_set())
     }
 
     // ----------- Extra tests from the book

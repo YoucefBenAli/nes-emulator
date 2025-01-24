@@ -98,26 +98,26 @@ lazy_static! {
         OpCode::new(0x0e, "ASL", 3, 6, AddressingMode::Absolute),
         OpCode::new(0x1e, "ASL", 3, 7, AddressingMode::Absolute_X),
 
-        OpCode::new(0x38, "SEC", 1, 2, AddressingMode::NoneAddressing),
-
-        OpCode::new(0x90, "BCC", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
-        OpCode::new(0xB0, "BCS", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
-        OpCode::new(0xF0, "BEQ", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
         OpCode::new(0x24, "BIT", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0x2C, "BIT", 3, 3, AddressingMode::Absolute),
 
         OpCode::new(0x30, "BMI", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
         OpCode::new(0xD0, "BNE", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
         OpCode::new(0x10, "BPL", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
         OpCode::new(0x50, "BVC", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-
         OpCode::new(0x70, "BVS", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+        OpCode::new(0x90, "BCC", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+        OpCode::new(0xB0, "BCS", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+        OpCode::new(0xF0, "BEQ", 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+
+        OpCode::new(0x18, "CLC", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xD8, "CLD", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x58, "CLI", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xB8, "CLV", 1, 2, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x38, "SEC", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xF8, "SED", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x78, "SEI", 1, 2, AddressingMode::NoneAddressing),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);
