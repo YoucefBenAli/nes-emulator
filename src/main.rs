@@ -96,6 +96,7 @@ impl CPU {
                 LDY => self.ldy(mode),
                 STA => self.sta(mode),
                 STX => self.stx(mode),
+                STY => self.sty(mode),
                 BIT => self.bit(mode),
                 BCS => self.bcs(mode),
                 BCC => self.bcc(mode),
@@ -108,6 +109,9 @@ impl CPU {
                 CMP => self.cmp(mode),
                 CPX => self.cpx(mode),
                 CPY => self.cpy(mode),
+                DEC => self.dec(mode),
+                DEX => self.dex(),
+                DEY => self.dey(),
                 TAX => self.tax(),
                 INX => self.inx(),
                 CLC => self.clc(),
@@ -158,13 +162,16 @@ impl CPU {
     }
 
     fn stx(&mut self, mode: &AddressingMode) {
-        // Missing unit tests
         let addr: u16 = mode.get_operand_address(self);
         self.mem_write(addr, self.reg_x);
     }
 
+    fn sty(&mut self, mode: &AddressingMode) {
+        let addr: u16 = mode.get_operand_address(self);
+        self.mem_write(addr, self.reg_y);
+    }
+
     fn ldx(&mut self, mode: &AddressingMode) {
-        // Missing unit tests
         let param = self.mem_read(mode.get_operand_address(&self));
         self.reg_x = param;
         
@@ -172,7 +179,6 @@ impl CPU {
     }
 
     fn ldy(&mut self, mode: &AddressingMode) {
-        // Missing unit tests
         let param = self.mem_read(mode.get_operand_address(&self));
         self.reg_y = param;
         
@@ -306,6 +312,31 @@ impl CPU {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
 
         self.compare(self.reg_y, param);
+    }
+
+    fn dec(&mut self, mode: &AddressingMode) {
+        let mut param: u8 = self.mem_read(mode.get_operand_address(&self));
+        
+        param = param.wrapping_sub(1);
+
+        self.set_zero_and_negative_flag(param);
+        self.mem_write(mode.get_operand_address(&self), param);
+    }
+
+    fn dex(&mut self) {
+        
+        let result: u8 = self.reg_x.wrapping_sub(1);
+        
+        self.set_zero_and_negative_flag(result);
+        self.reg_x = result;
+    }
+
+    fn dey(&mut self) {
+        
+        let result: u8 = self.reg_y.wrapping_sub(1);
+        
+        self.set_zero_and_negative_flag(result);
+        self.reg_y = result;
     }
 
     fn clc(&mut self) {
@@ -1300,6 +1331,144 @@ mod test {
         cpu.load_and_run(vec![0xa0, 0x05, 0xc0, 0x06]);
         assert_eq!(cpu.reg_y, 0x05);
         assert!(!cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- LDA tests
+    #[test]
+    fn test_0x85_sta_zero_page_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x95_sta_zero_page_x_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x02, 0x95, 0x0d, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x8d_sta_absolute_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x8d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.memory[0x1000], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x9d_sta_absolute_x_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x02, 0x9d, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.memory[0x1002], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x99_sta_absolute_y_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa0, 0x02, 0x99, 0x00, 0x10, 0x00]);
+        assert_eq!(cpu.memory[0x1002], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x81_sta_indirect_x_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x05, 0x81, 0x05, 0x00]);
+        assert_eq!(cpu.memory[0x1005], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    #[test]
+    fn test_0x91_sta_indirect_y_store_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x000a] = 0x05;
+        cpu.memory[0x000b] = 0x10;
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa0, 0x05, 0x91, 0x0a, 0x00]);
+        assert_eq!(cpu.memory[0x100a], 0x05);
+        assert_eq!(cpu.reg_a, 0x05);
+    }
+
+    // ---------- STX tests
+    #[test]
+    fn test_0x86_stx_zero_page_store_reg_x() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0x86, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.reg_x, 0x05);
+    }
+
+    // ---------- STY tests
+    #[test]
+    fn test_0x84_sty_zero_age_store_reg_y() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0, 0x05, 0x84, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.reg_y, 0x05);
+    }
+
+    // ---------- DEC tests
+    #[test]
+    fn test_0xc6_dec_zero_page_normal_decrement() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x04);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc6_dec_zero_page_decrement_to_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0x00);
+        assert_eq!(cpu.reg_a, 0x01);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc6_dec_zero_page_decrement_to_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x00, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
+        assert_eq!(cpu.memory[0x0f], 0xFF);
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- DEX tests
+    #[test]
+    fn test_0xca_dex_normal_decrement() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0xca, 0x00]);
+        assert_eq!(cpu.reg_x, 0x04);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xca_dex_decrement_to_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x01, 0xca, 0x00]);
+        assert_eq!(cpu.reg_x, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xca_dex_decrement_to_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x00, 0xca, 0x00]);
+        assert_eq!(cpu.reg_x, 0xFF);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
     }
