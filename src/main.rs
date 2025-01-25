@@ -105,6 +105,9 @@ impl CPU {
                 BPL => self.bpl(mode),
                 BVC => self.bvc(mode),
                 BVS => self.bvs(mode),
+                CMP => self.cmp(mode),
+                CPX => self.cpx(mode),
+                CPY => self.cpy(mode),
                 TAX => self.tax(),
                 INX => self.inx(),
                 CLC => self.clc(),
@@ -287,6 +290,24 @@ impl CPU {
         self.set_negative_flag(Self::check_bit_set(param, 7));
     }
 
+    fn cmp(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        self.compare(self.reg_a, param);
+    }
+
+    fn cpx(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        self.compare(self.reg_x, param);
+    }
+
+    fn cpy(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        self.compare(self.reg_y, param);
+    }
+
     fn clc(&mut self) {
         self.set_carry_flag(false);
     }
@@ -315,7 +336,17 @@ impl CPU {
         self.set_interrupt_flag(true);
     }
 
+
     //-- Helper methods
+
+    fn compare(&mut self, a: u8, b:u8) {
+        
+        self.set_carry_flag(a>=b);
+
+        let result: u8 = a.wrapping_sub(b); // Z,C,N = A-B
+        self.set_zero_and_negative_flag(result);
+
+    }
 
     /// Returns true if the bit_to_check bit is set in param where bit 7 is the most significant bit and bit 0 is the least significant bit
     fn check_bit_set(param: u8, bit_to_check: u8) -> bool {
@@ -1178,6 +1209,99 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x78, 0x00]);
         assert!(cpu.is_interrupt_flag_set())
+    }
+
+    // ---------- CMP tests
+    #[test]
+    fn test_0xc9_cmp_a_greater_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xc9, 0x01]);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc9_cmp_a_equal_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xc9, 0x05]);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc9_cmp_a_less_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0xc9, 0x06]);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(!cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- CPX tests
+    #[test]
+    fn test_0xe0_cpx_x_greater_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0xe0, 0x01]);
+        assert_eq!(cpu.reg_x, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xe0_cpx_x_equal_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0xe0, 0x05]);
+        assert_eq!(cpu.reg_x, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xe0_cpx_x_less_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2, 0x05, 0xe0, 0x06]);
+        assert_eq!(cpu.reg_x, 0x05);
+        assert!(!cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- CPY tests
+    #[test]
+    fn test_0xc0_cpy_y_greater_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0, 0x05, 0xc0, 0x01]);
+        assert_eq!(cpu.reg_y, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc0_cpy_y_equal_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0, 0x05, 0xc0, 0x05]);
+        assert_eq!(cpu.reg_y, 0x05);
+        assert!(cpu.is_carry_flag_set());
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xc0_cpy_y_less_than_m() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0, 0x05, 0xc0, 0x06]);
+        assert_eq!(cpu.reg_y, 0x05);
+        assert!(!cpu.is_carry_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
     }
 
     // ----------- Extra tests from the book
