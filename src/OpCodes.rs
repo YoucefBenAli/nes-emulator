@@ -41,6 +41,7 @@ pub enum Mnemonic {
     DEC,
     DEX,
     DEY,
+    EOR,
 }
 
 pub struct OpCode {
@@ -191,6 +192,15 @@ lazy_static! {
         OpCode::new(0xCA, DEX, 1, 2, AddressingMode::NoneAddressing),
 
         OpCode::new(0x88, DEY, 1, 2, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x49, EOR, 2, 2, AddressingMode::Immediate),
+        OpCode::new(0x45, EOR, 2, 3, AddressingMode::ZeroPage),
+        OpCode::new(0x55, EOR, 2, 4, AddressingMode::ZeroPage_X),
+        OpCode::new(0x4D, EOR, 3, 4, AddressingMode::Absolute),
+        OpCode::new(0x5D, EOR, 3, 4 /* +1 if page crossed */, AddressingMode::Absolute_X),
+        OpCode::new(0x59, EOR, 3, 4 /* +1 if page crossed */, AddressingMode::Absolute_Y),
+        OpCode::new(0x41, EOR, 2, 6, AddressingMode::Indirect_X),
+        OpCode::new(0x51, EOR, 2, 5 /* +1 if page crossed */, AddressingMode::Indirect_Y),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);

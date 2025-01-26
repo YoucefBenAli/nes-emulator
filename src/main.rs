@@ -109,6 +109,7 @@ impl CPU {
                 CMP => self.cmp(mode),
                 CPX => self.cpx(mode),
                 CPY => self.cpy(mode),
+                EOR => self.eor(mode),
                 DEC => self.dec(mode),
                 DEX => self.dex(),
                 DEY => self.dey(),
@@ -321,6 +322,13 @@ impl CPU {
 
         self.set_zero_and_negative_flag(param);
         self.mem_write(mode.get_operand_address(&self), param);
+    }
+
+    fn eor(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        self.reg_a = self.reg_a ^ param;
+        self.set_zero_and_negative_flag(self.reg_a);
     }
 
     fn dex(&mut self) {
@@ -1469,6 +1477,34 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2, 0x00, 0xca, 0x00]);
         assert_eq!(cpu.reg_x, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- EOR tests
+    #[test]
+    fn test_0x49_eor_normal_exclusive_or() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xaa, 0x49, 0xF5, 0x00]); // 1010_1010 exlusive or 1111_0101 = 0101_1111
+        assert_eq!(cpu.reg_a, 0x5F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x49_eor_normal_exclusive_or_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x49, 0xFF, 0x00]); // 1111_1111 exlusive or 1111_1111 = 0
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x49_eor_normal_exclusive_or_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7F, 0x49, 0xFF, 0x00]); // 0111_1111 exlusive or 1111_1111 = 0
+        assert_eq!(cpu.reg_a, 0x80);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
     }
