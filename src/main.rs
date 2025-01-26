@@ -111,10 +111,12 @@ impl CPU {
                 CPY => self.cpy(mode),
                 EOR => self.eor(mode),
                 DEC => self.dec(mode),
+                INC => self.inc(mode),
                 DEX => self.dex(),
                 DEY => self.dey(),
                 TAX => self.tax(),
                 INX => self.inx(),
+                INY => self.iny(),
                 CLC => self.clc(),
                 CLD => self.cld(),
                 CLI => self.cli(),
@@ -142,11 +144,6 @@ impl CPU {
 
     fn tax(&mut self) {
         self.reg_x = self.reg_a;
-        self.set_zero_and_negative_flag(self.reg_x);
-    }
-
-    fn inx(&mut self) {
-        self.reg_x = self.reg_x.wrapping_add(1);
         self.set_zero_and_negative_flag(self.reg_x);
     }
 
@@ -329,6 +326,25 @@ impl CPU {
 
         self.reg_a = self.reg_a ^ param;
         self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn inc(&mut self, mode: &AddressingMode) {
+        let mut param: u8 = self.mem_read(mode.get_operand_address(&self));
+
+        param = param.wrapping_add(1);
+
+        self.set_zero_and_negative_flag(param);
+        self.mem_write(mode.get_operand_address(&self), param);
+    }
+
+    fn inx(&mut self) {
+        self.reg_x = self.reg_x.wrapping_add(1);
+        self.set_zero_and_negative_flag(self.reg_x);
+    }
+
+    fn iny(&mut self) {
+        self.reg_y = self.reg_y.wrapping_add(1);
+        self.set_zero_and_negative_flag(self.reg_y);
     }
 
     fn dex(&mut self) {
@@ -715,37 +731,6 @@ mod test {
         cpu.load_and_run(program);
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_zero_flag_set());
-    }
-
-    // ---------- INX tests
-    #[test]
-    fn test_0xe8_inx_normal_increment() {
-        let mut cpu: CPU = CPU::new();
-        let program: Vec<u8> = vec![0xa9, 0x20, 0xaa, 0xe8, 0x00]; // Transfer value 0x20 (decimal: 32) into accumulator and TAX and the increment
-
-        cpu.load_and_run(program);
-        assert!(!cpu.is_negative_flag_set());
-        assert!(!cpu.is_zero_flag_set());
-        assert!(cpu.reg_x==33);
-    }
-    #[test]
-    fn test_0xe8_inx_increment_into_negative() {
-        let mut cpu: CPU = CPU::new();
-        let program: Vec<u8> = vec![0xa9, 0x7F, 0xaa, 0xe8, 0x00]; // Transfer value 0x7F (decimal: 127) into accumulator and TAX and the increment which will go negative
-
-        cpu.load_and_run(program);
-        assert!(cpu.is_negative_flag_set());
-        assert!(!cpu.is_zero_flag_set());
-    }
-    #[test]
-    fn test_0xe8_inx_increment_into_zero() {
-        let mut cpu: CPU = CPU::new();
-        let program: Vec<u8> = vec![0xa9, 0xFF, 0xaa, 0xe8, 0x00]; // Transfer value 0xFF (decimal: 255) into accumulator and TAX and the increment which will go zero
-
-        cpu.load_and_run(program);
-        assert!(!cpu.is_negative_flag_set());
-        assert!(cpu.is_zero_flag_set());
-        assert_eq!(cpu.reg_x, 0);
     }
 
     // ---------- ADC tests
@@ -1507,6 +1492,97 @@ mod test {
         assert_eq!(cpu.reg_a, 0x80);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- INC tests
+    #[test]
+    fn test_0xe6_inc_zero_page_normal_increment() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // Store 0x05 in memory 0x0f then increment
+        assert_eq!(cpu.memory[0x0f], 0x06);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xe6_inc_zero_page_increment_to_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0xFF, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // 0xFF +1 => 0x00
+        assert_eq!(cpu.memory[0x0f], 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xe6_inc_zero_page_increment_to_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x7F, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // 01111111 +1 => 1000_0000
+        assert_eq!(cpu.memory[0x0f], 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- INX tests
+    #[test]
+    fn test_0xe8_inx_normal_increment() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x20, 0xaa, 0xe8, 0x00]; // Transfer value 0x20 (decimal: 32) into accumulator and TAX and the increment
+
+        cpu.load_and_run(program);
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert_eq!(cpu.reg_x, 33);
+    }
+    #[test]
+    fn test_0xe8_inx_increment_into_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x7F, 0xaa, 0xe8, 0x00]; // Transfer value 0x7F (decimal: 127) into accumulator and TAX and the increment which will go negative
+
+        cpu.load_and_run(program);
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+    }
+    #[test]
+    fn test_0xe8_inx_increment_into_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0xFF, 0xaa, 0xe8, 0x00]; // Transfer value 0xFF (decimal: 255) into accumulator and TAX and the increment which will go zero
+
+        cpu.load_and_run(program);
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_zero_flag_set());
+        assert_eq!(cpu.reg_x, 0);
+    }
+
+    // ---------- INY tests
+    #[test]
+    fn test_0xc8_iny_normal_increment() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0x20, 0xc8, 0x00];
+
+        cpu.load_and_run(program);
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert_eq!(cpu.reg_y, 33);
+    }
+    #[test]
+    fn test_0xc8_iny_increment_into_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0x7F, 0xc8, 0x00];
+
+        cpu.load_and_run(program);
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+        assert_eq!(cpu.reg_y, 0x80);
+    }
+    #[test]
+    fn test_0xc8_iny_increment_into_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0xFF, 0xc8, 0x00];
+
+        cpu.load_and_run(program);
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_zero_flag_set());
+        assert_eq!(cpu.reg_y, 0);
     }
 
     // ----------- Extra tests from the book
