@@ -116,6 +116,7 @@ impl CPU {
                 DEC => self.dec(mode),
                 INC => self.inc(mode),
                 JMP => self.jmp(mode),
+                JSR => self.jsr(mode),
                 DEX => self.dex(),
                 DEY => self.dey(),
                 TAX => self.tax(),
@@ -347,6 +348,15 @@ impl CPU {
         self.program_counter = param;
     }
 
+    fn jsr(&mut self, mode: &AddressingMode) {
+        let param: u16 = mode.get_operand_address(&self);
+
+        // The JSR instruction pushes the address (minus one) of the return point on to the stack,
+        // but we also need to add the 2 bytes read from the absoltue address
+        self.push_to_stack_u16(self.program_counter +2 -1); 
+        self.program_counter = param;
+    }
+
     fn inx(&mut self) {
         self.reg_x = self.reg_x.wrapping_add(1);
         self.set_zero_and_negative_flag(self.reg_x);
@@ -403,6 +413,22 @@ impl CPU {
 
 
     //-- Helper methods
+
+    fn push_to_stack_u16(&mut self, value:u16) {
+
+        let value_low: u8 = (value & 0x00FF) as u8;
+        let value_high: u8 = ((value & 0xFF00) >> 8) as u8;
+
+        // High bit is pushed first then low bit is pushed
+        self.push_to_stack_u8(value_high);
+        self.push_to_stack_u8(value_low);
+    }
+
+    fn push_to_stack_u8(&mut self, value: u8) {
+        let addr: u16 = (0x0100 as u16) | (self.stack_ptr as u16);
+        self.mem_write(addr, value);
+        self.stack_ptr = self.stack_ptr.wrapping_sub(1);
+    }
 
     fn compare(&mut self, a: u8, b:u8) {
         
@@ -1630,6 +1656,21 @@ mod test {
         cpu.load_and_run(program);
 
         assert_eq!(cpu.program_counter, 0x2001);
+    }
+
+    // ---------- JSR tests
+    #[test]
+    fn test_0x20_jsr_normal_jump() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0x20, 0x00, 0x10];
+        cpu.load_and_run(program);
+
+        // Program counter starts at 0x8000, we read 3 bytes so its 8003 when we finish the JSR command but we push the pc minus 1
+        // Therefore we should see the high byte 0x80 in the stack followed by the low byte 0x02
+        // The program counter should also be at 10001
+        assert_eq!(cpu.memory[0x01FF], 0x80);
+        assert_eq!(cpu.memory[0x01FE], 0x02);
+        assert_eq!(cpu.program_counter, 0x1001);
     }
 
 }
