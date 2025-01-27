@@ -50,6 +50,8 @@ pub enum Mnemonic {
     NOP,
     ORA,
     PHA,
+    PHP,
+    PLA,
 }
 
 pub struct OpCode {
@@ -241,6 +243,10 @@ lazy_static! {
         OpCode::new(0xEA, NOP, 1, 2, AddressingMode::NoneAddressing),
 
         OpCode::new(0x48, PHA, 1, 3, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x08, PHP, 1, 3, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x68, PLA, 1, 4, AddressingMode::NoneAddressing),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);

@@ -24,7 +24,7 @@ impl CPU {
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
-            state: 0,
+            state: 0b0010_0000, // 5th bit always set
             program_counter: 0,
             stack_ptr: 0,
             memory: [0; 0xFFFF]
@@ -61,7 +61,7 @@ impl CPU {
     pub fn reset(&mut self) {
         self.reg_a = 0;
         self.reg_x = 0;
-        self.state = 0;
+        self.state = 0b0010_0000; // 5th bit always set
         self.stack_ptr = 0xFF; // In 6502 the stack pointer always starts at 0x01ff
 
         self.program_counter = self.mem_read_u16(0xFFFC);
@@ -119,6 +119,8 @@ impl CPU {
                 INC => self.inc(mode),
                 JMP => self.jmp(mode),
                 JSR => self.jsr(mode),
+                PHP => self.php(),
+                PLA => self.pla(),
                 PHA => self.pha(),
                 DEX => self.dex(),
                 DEY => self.dey(),
@@ -388,6 +390,19 @@ impl CPU {
         self.program_counter = param;
     }
 
+    fn php(&mut self) {
+        // Need to set the 5th bit (the B flag) since the PHP and BRK instructions set it
+        // Also need to set the 6th bit since its always pushed as 1
+        // https://www.nesdev.org/wiki/Status_flags#The_B_flag
+        let processor_flags: u8 = self.state | 0b0011_0000;
+        self.push_to_stack_u8(processor_flags);
+    }
+
+    fn pla(&mut self) {
+        self.reg_a = self.pull_from_stack_u8();
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
     fn pha(&mut self) {
         self.push_to_stack_u8(self.reg_a); 
     }
@@ -467,6 +482,13 @@ impl CPU {
         let addr: u16 = (0x0100 as u16) | (self.stack_ptr as u16);
         self.mem_write(addr, value);
         self.stack_ptr = self.stack_ptr.wrapping_sub(1);
+    }
+
+    fn pull_from_stack_u8(&mut self) -> u8 {
+        let addr: u16 = (0x0100 as u16) | (self.stack_ptr.wrapping_add(1) as u16);
+        let value: u8 = self.mem_read(addr);
+        self.stack_ptr = self.stack_ptr.wrapping_add(1);
+        return value;
     }
 
     fn compare(&mut self, a: u8, b:u8) {
@@ -1801,6 +1823,28 @@ mod test {
         cpu.load_and_run(program);
 
         assert_eq!(cpu.memory[0x01FF], 0x80);
+    }
+
+    // ---------- PHP tests
+    #[test]
+    fn test_0x09_php_push_status_flag() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0x38, 0xf8, 0x78, 0x08, 0x00]; //Setting carry, interrupt and decimal flags
+        cpu.load_and_run(program);
+
+        // Stack should contain: 0011_1101
+        assert_eq!(cpu.memory[0x01FF], 0x3D);
+    }
+
+    // ---------- PLA tests
+    #[test]
+    fn test_0x68_pla_pull_stack_into_accumulator() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x80, 0x48, 0xa9, 0x01, 0x68, 0x00]; // Push 0x80 into stack, then replace accumulator with 01 then pull stack to accumulator to make sure its back to 0x80
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.reg_a, 0x80);
+        assert_eq!(cpu.stack_ptr, 0xFF);
     }
 
 }
