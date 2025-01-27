@@ -44,6 +44,7 @@ pub enum Mnemonic {
     INC,
     INX,
     INY,
+    JMP,
 }
 
 pub struct OpCode {
@@ -211,6 +212,9 @@ lazy_static! {
         OpCode::new(0xE8, INX, 1, 2, AddressingMode::NoneAddressing),
 
         OpCode::new(0xC8, INY, 1, 2, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x4C, JMP, 3, 3, AddressingMode::Absolute),
+        OpCode::new(0x6C, JMP, 3, 5, AddressingMode::Indirect),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);

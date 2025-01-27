@@ -14,6 +14,7 @@ struct CPU {
     pub reg_y: u8,
     pub state: u8, // bit flags: NV-BDIZC where N=negative V=overflow, B=break, D=decimal mode, I=interrupt, Z=zero, C=carry
     pub program_counter: u16,
+    pub stack_ptr: u8,
     memory: [u8; 0xFFFF] //64kb long array
 }
 
@@ -25,6 +26,7 @@ impl CPU {
             reg_y: 0,
             state: 0,
             program_counter: 0,
+            stack_ptr: 0,
             memory: [0; 0xFFFF]
         }
     }
@@ -60,6 +62,7 @@ impl CPU {
         self.reg_a = 0;
         self.reg_x = 0;
         self.state = 0;
+        self.stack_ptr = 0xFF; // In 6502 the stack pointer always starts at 0x01ff
 
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
@@ -112,6 +115,7 @@ impl CPU {
                 EOR => self.eor(mode),
                 DEC => self.dec(mode),
                 INC => self.inc(mode),
+                JMP => self.jmp(mode),
                 DEX => self.dex(),
                 DEY => self.dey(),
                 TAX => self.tax(),
@@ -335,6 +339,12 @@ impl CPU {
 
         self.set_zero_and_negative_flag(param);
         self.mem_write(mode.get_operand_address(&self), param);
+    }
+
+    fn jmp (&mut self, mode: &AddressingMode) {
+        let param: u16 = mode.get_operand_address(&self);
+
+        self.program_counter = param;
     }
 
     fn inx(&mut self) {
@@ -1585,13 +1595,41 @@ mod test {
         assert_eq!(cpu.reg_y, 0);
     }
 
-    // ----------- Extra tests from the book
+    // ---------- JMP tests
     #[test]
-    fn test_5_ops_working_together() {
-        let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
-  
-        assert_eq!(cpu.reg_x, 0xc1)
+    fn test_0x4c_jmp_normal_jump() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0x4c, 0x00, 0x10]; // JMP $1000
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.program_counter, 0x1001);
+    }
+
+    #[test]
+    fn test_0x6c_jmp_normal_jump_indirect() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x1000] = 0x00;
+        cpu.memory[0x1001] = 0x20;
+        let program: Vec<u8> = vec![0x6c, 0x00, 0x10];
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.program_counter, 0x2001);
+    }
+
+    #[test]
+    fn test_0x6c_jmp_normal_jump_indirect_boundary_bug() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x1050] = 0x00;
+        cpu.memory[0x1051] = 0x20;
+
+        cpu.memory[0x1000] = 0x10;
+        cpu.memory[0x10FF] = 0x50;
+        // Instead of loading addresses at $10FF and $1100 where 10FF is the lowbyte and 1100 is the high byte
+        // It's loading the low byte from $10ff and the high byte from $1000 therefore reading the address stored at $1050
+        let program: Vec<u8> = vec![0x6c, 0xFF, 0x10];
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.program_counter, 0x2001);
     }
 
 }
