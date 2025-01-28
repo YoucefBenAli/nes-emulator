@@ -119,7 +119,10 @@ impl CPU {
                 INC => self.inc(mode),
                 JMP => self.jmp(mode),
                 JSR => self.jsr(mode),
+                ROL => self.rol(mode),
+                ROR => self.ror(mode),
                 PHP => self.php(),
+                PLP => self.plp(),
                 PLA => self.pla(),
                 PHA => self.pha(),
                 DEX => self.dex(),
@@ -390,12 +393,60 @@ impl CPU {
         self.program_counter = param;
     }
 
+    fn rol(&mut self, mode: &AddressingMode) {
+        let param: u8 = match mode {
+            AddressingMode::NoneAddressing => self.reg_a,
+            _ => self.mem_read(mode.get_operand_address(&self))
+        };
+
+        let mut new_val: u8 = param << 1;
+
+        if self.is_carry_flag_set() {
+            new_val = new_val | 0b_0000_0001;
+        }
+
+        self.set_carry_flag((param & 0b1000_0000) != 0);
+        self.set_zero_and_negative_flag(new_val);
+
+        if let AddressingMode::NoneAddressing = mode {
+            self.reg_a = new_val;
+        } else {
+            self.mem_write(mode.get_operand_address(&self), new_val);
+        }
+    }
+
+    fn ror(&mut self, mode: &AddressingMode) {
+        let param: u8 = match mode {
+            AddressingMode::NoneAddressing => self.reg_a,
+            _ => self.mem_read(mode.get_operand_address(&self))
+        };
+
+        let mut new_val: u8 = param >> 1;
+
+        if self.is_carry_flag_set() {
+            new_val = new_val | 0b_1000_0000;
+        }
+
+        self.set_carry_flag((param & 0b0000_0001) != 0);
+        self.set_zero_and_negative_flag(new_val);
+
+        if let AddressingMode::NoneAddressing = mode {
+            self.reg_a = new_val;
+        } else {
+            self.mem_write(mode.get_operand_address(&self), new_val);
+        }
+    }
+
     fn php(&mut self) {
         // Need to set the 5th bit (the B flag) since the PHP and BRK instructions set it
         // Also need to set the 6th bit since its always pushed as 1
         // https://www.nesdev.org/wiki/Status_flags#The_B_flag
         let processor_flags: u8 = self.state | 0b0011_0000;
         self.push_to_stack_u8(processor_flags);
+    }
+
+    fn plp(&mut self) {
+        self.state = self.pull_from_stack_u8();
     }
 
     fn pla(&mut self) {
@@ -1845,6 +1896,132 @@ mod test {
 
         assert_eq!(cpu.reg_a, 0x80);
         assert_eq!(cpu.stack_ptr, 0xFF);
+    }
+
+    // ---------- PLP tests
+    #[test]
+    fn test_0x28_plp_pull_status_flag() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0x38, 0xf8, 0x78, 0x08, 0x18, 0xd8, 0x58, 0x28, 0x00]; //Setting carry, interrupt and decimal flags, then clearing those flags and pulling the status
+        cpu.load_and_run(program);
+
+        assert!(cpu.is_carry_flag_set());
+        assert!(cpu.is_decimal_flag_set());
+        assert!(cpu.is_interrupt_flag_set());
+    }
+
+    // ---------- ROL tests
+    #[test]
+    fn test_0x2a_rol_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x02, 0x2a, 0x00]); // LDA #$02; ROL
+        assert_eq!(cpu.reg_a, 0x04);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x26_rol_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x02;
+        cpu.load_and_run(vec![0x26, 0x05, 0x00]);
+        assert_eq!(cpu.memory[0x05], 0x04);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x2a_rol_bit_7_to_carry_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x81, 0x2a, 0x00]); // 1000_0001 => 0000_0010
+        assert_eq!(cpu.reg_a, 0x02);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x2a_rol_carry_flag_to_bit_0() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0x38, 0x2a, 0x00]); // set carry flag then  0000_0001 => 0000_0011
+        assert_eq!(cpu.reg_a, 0x03);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x2a_rol_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x80, 0x2a, 0x00]); // set carry flag then  1000_0000 => 0000_0000
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x2a_rol_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x40, 0x2a, 0x00]); // set carry flag then  0100_0000 => 1000_0000
+        assert_eq!(cpu.reg_a, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    // ---------- ROR tests
+    #[test]
+    fn test_0x6a_ror_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x02, 0x6a, 0x00]); // LDA #$02; ROR
+        assert_eq!(cpu.reg_a, 0x01);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x66_ror_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.memory[0x05] = 0x02;
+        cpu.load_and_run(vec![0x66, 0x05, 0x00]);
+        assert_eq!(cpu.memory[0x05], 0x01);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x6a_ror_bit_0_to_carry_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x81, 0x6a, 0x00]); // 1000_0001 => 0100_0000
+        assert_eq!(cpu.reg_a, 0x40);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x6a_ror_carry_flag_to_bit_7_and_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x02, 0x38, 0x6a, 0x00]); // set carry flag then  0000_0010 => 1000_0001
+        assert_eq!(cpu.reg_a, 0x81);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0x6a_ror_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x01, 0x6a, 0x00]); // set carry flag then  0000_0001 => 0000_0000
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_carry_flag_set());
     }
 
 }
