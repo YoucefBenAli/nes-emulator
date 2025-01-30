@@ -118,6 +118,8 @@ impl CPU {
                 JSR => self.jsr(mode),
                 ROL => self.rol(mode),
                 ROR => self.ror(mode),
+                RTI => self.rti(),
+                RTS => self.rts(),
                 PHP => self.php(),
                 PLP => self.plp(),
                 PLA => self.pla(),
@@ -386,6 +388,8 @@ impl CPU {
 
         // The JSR instruction pushes the address (minus one) of the return point on to the stack,
         // but we also need to add the 2 bytes read from the absoltue address
+        // The reason it's minus one is that in a real 6502 cpu, the program counter would have been pointing to the last byte in the 3 byte instructions of jsr
+        // It therefore would have pushed the return point for RTS -1 so I'm just keeping it consistent with the actual cpu
         self.push_to_stack_u16(self.program_counter +2 -1); 
         self.program_counter = param;
     }
@@ -432,6 +436,15 @@ impl CPU {
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
         }
+    }
+
+    fn rti(&mut self) {
+        self.plp();
+        self.program_counter = self.pull_from_stack_u16();
+    }
+
+    fn rts(&mut self) {
+        self.program_counter = self.pull_from_stack_u16() +1; // Need to compensate for the -1 subtracted during the JSR command
     }
 
     fn php(&mut self) {
@@ -537,6 +550,12 @@ impl CPU {
         let value: u8 = self.mem_read(addr);
         self.stack_ptr = self.stack_ptr.wrapping_add(1);
         return value;
+    }
+
+    fn pull_from_stack_u16(&mut self) -> u16 {
+        let value_low: u16 = self.pull_from_stack_u8() as u16;
+        let value_high: u16 = (self.pull_from_stack_u8() as u16) << 8;
+        value_high | value_low
     }
 
     fn compare(&mut self, a: u8, b:u8) {
@@ -669,7 +688,6 @@ impl CPU {
 fn main() {
     println!("Hello, world!");
 }
-
 
 #[cfg(test)]
 mod test {
@@ -2019,6 +2037,35 @@ mod test {
         assert!(cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
         assert!(cpu.is_carry_flag_set());
+    }
+
+
+    // ---------- RTI tests
+    
+    #[test]
+    fn test_0x40_rti_push_status_flag_and_push_acc_then_rti() {
+        // Since I don't currenty have a way to test interupts I'm going to make a pretend one by pushing the accumulator twice
+        // and having that be the "program counter".
+        // TODO: When interrupts get implemented update this unit test
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x30, 0x48, 0x48, 0x38, 0xf8, 0x78, 0x08, 0x18, 0xD8, 0x58, 0x40, 0x00]; //LDA #$30; PHA; PHA; SEC; SED; SEI; PHP; CLC; CLD; CLI; RTI;
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.program_counter, 0x3031);
+        assert!(cpu.is_carry_flag_set());
+        assert!(cpu.is_decimal_flag_set());
+        assert!(cpu.is_interrupt_flag_set());
+    }
+
+    // ---------- RTS tests
+    #[test]
+    fn test_0x60_rts_jump_then_return_from_jump() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x1000] = 0x60;
+        let program: Vec<u8> = vec![0x20, 0x00, 0x10, 0x00];
+        cpu.load_and_run(program);
+
+        assert_eq!(cpu.program_counter, 0x8004);
     }
 
 }

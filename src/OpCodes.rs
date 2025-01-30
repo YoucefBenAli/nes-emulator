@@ -55,6 +55,8 @@ pub enum Mnemonic {
     PLP,
     ROL,
     ROR,
+    RTI,
+    RTS,
 }
 
 pub struct OpCode {
@@ -264,6 +266,10 @@ lazy_static! {
         OpCode::new(0x76, ROR, 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x6E, ROR, 3, 6, AddressingMode::Absolute),
         OpCode::new(0x7E, ROR, 3, 7, AddressingMode::Absolute_X),
+
+        OpCode::new(0x40, RTI, 1, 6, AddressingMode::NoneAddressing),
+
+        OpCode::new(0x60, RTS, 1, 6, AddressingMode::NoneAddressing),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = OpCode::create_hash_map(&CPU_OPS_CODES);
