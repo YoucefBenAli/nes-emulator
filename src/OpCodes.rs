@@ -58,6 +58,7 @@ pub enum Mnemonic {
     RTI,
     RTS,
     SBC,
+    TAY,
 }
 
 pub struct OpCode {
@@ -98,7 +99,10 @@ impl OpCode {
 lazy_static! {
     pub static ref CPU_OPS_CODES: Vec<OpCode> = vec![
         OpCode::new(0x00, BRK, 1, 7, AddressingMode::NoneAddressing),
+
         OpCode::new(0xaa, TAX, 1, 2, AddressingMode::NoneAddressing),
+
+        OpCode::new(0xa8, TAY, 1, 2, AddressingMode::NoneAddressing),
 
         OpCode::new(0xa9, LDA, 2, 2, AddressingMode::Immediate),
         OpCode::new(0xa5, LDA, 2, 3, AddressingMode::ZeroPage),

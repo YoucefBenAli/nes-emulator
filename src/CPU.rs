@@ -128,6 +128,7 @@ impl CPU {
                 DEX => self.dex(),
                 DEY => self.dey(),
                 TAX => self.tax(),
+                TAY => self.tay(),
                 INX => self.inx(),
                 INY => self.iny(),
                 CLC => self.clc(),
@@ -159,6 +160,11 @@ impl CPU {
     fn tax(&mut self) {
         self.reg_x = self.reg_a;
         self.set_zero_and_negative_flag(self.reg_x);
+    }
+
+    fn tay(&mut self) {
+        self.reg_y = self.reg_a;
+        self.set_zero_and_negative_flag(self.reg_y);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -895,6 +901,7 @@ mod test {
         let program: Vec<u8> = vec![0xa9, 0x00, 0xaa, 0x00]; // Transfer value 0 into accumulator and TAX
 
         cpu.load_and_run(program);
+        assert_eq!(cpu.reg_x, 0x00);
         assert!(cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
     }
@@ -905,6 +912,7 @@ mod test {
         let program: Vec<u8> = vec![0xa9, 0x80, 0xaa, 0x00]; // Transfer value 0x80 into accumulator which corresponds to 0b1000_0000 and TAX
 
         cpu.load_and_run(program);
+        assert_eq!(cpu.reg_x, 0x80);
         assert!(cpu.is_negative_flag_set());
         assert!(!cpu.is_zero_flag_set());
     }
@@ -915,6 +923,7 @@ mod test {
         let program: Vec<u8> = vec![0xa9, 0x20, 0xaa, 0x00]; // Transfer value 0x20 (decimal: 32) into accumulator and TAX
 
         cpu.load_and_run(program);
+        assert_eq!(cpu.reg_x, 0x20);
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_zero_flag_set());
     }
@@ -2157,6 +2166,40 @@ mod test {
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_overflow_flag_set());
         assert!(cpu.is_carry_flag_set());
+    }
+
+    // ---------- TAY tests
+    #[test]
+    fn test_0xa8_tay_a_is_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x00, 0xa8, 0x00]; // Transfer value 0 into accumulator and TAX
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_y, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0xa8_tay_a_is_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x80, 0xa8, 0x00]; // Transfer value 0x80 into accumulator which corresponds to 0b1000_0000 and TAX
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_y, 0x80);
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
+    }
+
+    #[test]
+    fn test_0xa8_tay_neither_negative_or_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa9, 0x20, 0xa8, 0x00]; // Transfer value 0x20 (decimal: 32) into accumulator and TAX
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_y, 0x20);
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_zero_flag_set());
     }
     
     
