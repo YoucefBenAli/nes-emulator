@@ -89,6 +89,7 @@ impl CPU {
 
             match instruction {
                 ADC => self.adc(mode),
+                SBC => self.sbc(mode),
                 AND => self.and(mode),
                 LDA => self.lda(mode),
                 ASL => self.asl(mode),
@@ -209,6 +210,28 @@ impl CPU {
         self.set_carry_flag(sum_as_u16 > 0b1111_1111);
         self.set_overflow_flag(
             ((param ^ sum_as_u8) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
+        );
+        self.set_zero_and_negative_flag(sum_as_u8);
+        
+        self.reg_a = sum_as_u8;
+
+    }
+
+    fn sbc(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        let negative_param: u8 = (!param).wrapping_add(1); // 2's complement
+
+        let mut sum_as_u16: u16 = self.reg_a as u16 + negative_param as u16;
+        if !self.is_carry_flag_set() {
+            sum_as_u16 -= 1;
+        }
+
+        let sum_as_u8: u8 = sum_as_u16.to_be_bytes()[1];
+
+        let carry_flag: bool = self.reg_a >= {param + if self.is_carry_flag_set() {0} else {1}};
+        self.set_carry_flag(carry_flag);
+        self.set_overflow_flag(
+            ((negative_param ^ sum_as_u8) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
         );
         self.set_zero_and_negative_flag(sum_as_u8);
         
@@ -2067,5 +2090,75 @@ mod test {
 
         assert_eq!(cpu.program_counter, 0x8004);
     }
+
+    // ---------- ADC tests
+    #[test]
+    fn test_0xe9_sbc_normal_subtract_no_borrow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x40, 0xe9, 0x05, 0x00]); // SEC; LDA #$40; SBC #$05
+        assert_eq!(cpu.reg_a, 0x3b);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0xe9_sbc_normal_subtract_with_borrow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x40, 0xe9, 0x05, 0x00]); // LDA #$40; SBC #$05
+        assert_eq!(cpu.reg_a, 0x3a);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0xe9_sbc_cause_no_carry_and_negative() {
+        // This tests the case where a borrow occured and the carry flag is cleared to 0
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x09, 0xe9, 0x0a, 0x00]);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+    
+    #[test]
+    fn test_0xe9_sbc_subtract_positive_from_negative_for_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x80, 0xe9, 0x01, 0x00]); // -128 -1 should equal -129 but it overflows into 127
+        assert_eq!(cpu.reg_a, 0x7F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+    
+    #[test]
+    fn test_0xe9_sbc_subtract_negative_from_positive_for_overflow() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x7F, 0xe9, 0xFF, 0x00]); // 127 - (-1) should equal 128 but it overflows into -128
+        assert_eq!(cpu.reg_a, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+        assert!(!cpu.is_carry_flag_set());
+    }
+
+    #[test]
+    fn test_0xe9_sbc_cause_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38, 0xa9, 0x01, 0xe9, 0x01, 0x00]);
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(!cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+    
+    
 
 }
