@@ -139,6 +139,10 @@ impl CPU {
                 SED => self.sed(),
                 SEI => self.sei(),
                 NOP => self.nop(),
+                TSX => self.tsx(),
+                TXA => self.txa(),
+                TXS => self.txs(),
+                TYA => self.tya(),
 
                 BRK => {
                     break;
@@ -465,6 +469,26 @@ impl CPU {
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
         }
+    }
+
+    fn tsx(&mut self) {
+        self.reg_x = self.stack_ptr;
+        self.set_zero_and_negative_flag(self.reg_x);
+    }
+
+    fn txs(&mut self) {
+        self.stack_ptr = self.reg_x;
+        self.set_zero_and_negative_flag(self.stack_ptr);
+    }
+
+    fn txa(&mut self) {
+        self.reg_a = self.reg_x;
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn tya(&mut self) {
+        self.reg_a = self.reg_y;
+        self.set_zero_and_negative_flag(self.reg_a);
     }
 
     fn rti(&mut self) {
@@ -2201,7 +2225,119 @@ mod test {
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_zero_flag_set());
     }
-    
-    
+
+    // ---------- TSX tests
+    #[test]
+    fn test_0xba_tsx_stack_is_ff() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xba, 0x00]; // Stack pointer is always initialized to FF
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_x, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- TXS tests
+    #[test]
+    fn test_0x9a_txs_x_standard() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa2, 0x05, 0x9a, 0x00];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.stack_ptr, 0x05);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x9a_txs_x_is_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0x9a, 0x00];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.stack_ptr, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x9a_txs_x_is_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa2, 0x80, 0x9a, 0x00];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.stack_ptr, 0x80);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- TXA tests
+    #[test]
+    fn test_0x8a_txa_standard() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa2, 0x05, 0x8a];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x8a_txa_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa2, 0x00, 0x8a];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x8a_txa_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa2, 0xFF, 0x8a];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
+
+    // ---------- TYA tests
+    #[test]
+    fn test_0x98_txa_standard() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0x05, 0x98];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0x05);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x98_txa_zero() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0x00, 0x98];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0x00);
+        assert!(cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+    }
+
+    #[test]
+    fn test_0x98_txa_negative() {
+        let mut cpu: CPU = CPU::new();
+        let program: Vec<u8> = vec![0xa0, 0xFF, 0x98];
+
+        cpu.load_and_run(program);
+        assert_eq!(cpu.reg_a, 0xFF);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(cpu.is_negative_flag_set());
+    }
 
 }
