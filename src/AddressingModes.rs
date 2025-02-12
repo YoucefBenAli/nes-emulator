@@ -1,4 +1,4 @@
-use crate::CPU::CPU;
+use crate::cpu::CPU;
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]

@@ -16,7 +16,7 @@ pub struct CPU {
 }
 
 impl CPU {
-    fn new() -> CPU {
+    pub fn new() -> CPU {
         CPU {
             reg_a: 0,
             reg_x: 0,
@@ -76,9 +76,26 @@ impl CPU {
         self.run();
     }
 
+    pub fn load_and_run_snake_game<F>(&mut self, program: Vec<u8>, mut callback: F)
+    where F: FnMut(&mut CPU),
+    {
+        // Seperate function for the snake game since it expects the program code to be in a different location
+        self.memory[0x0600 .. (0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xFFFC, 0x0600);
+        self.reset();
+        self.run_with_callback(callback);
+    }
+
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F) 
+    where F: FnMut(&mut CPU),
+    {
         
         loop {
+            callback(self);
             let curr_instruction: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
             let initial_program_counter: u16 = self.program_counter;
@@ -630,9 +647,8 @@ impl CPU {
     }
 
     fn branch(&mut self, mode: &AddressingMode) {
-        let param = self.mem_read(mode.get_operand_address(&self));
-        self.program_counter += 1; // Reading the byte containing the param
-        self.program_counter += param as u16;
+        let param: i8 = self.mem_read(mode.get_operand_address(&self)) as i8;
+        self.program_counter =  self.program_counter.wrapping_add(1).wrapping_add(param as u16); // Reading the byte containing the param and then add the jump
     }
 
     /// Sets the zero flag if value is 0 and negative flag if value is negative
