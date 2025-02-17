@@ -3,6 +3,8 @@ use std::ops::Add;
 use crate::AddressingModes::AddressingMode;
 use crate::OpCodes::{Mnemonic, OpCode, OPCODES_MAP};
 use crate::OpCodes::Mnemonic::*;
+use crate::bus::Bus;
+use crate::memory::Memory;
 
 pub struct CPU {
     // TODO: need to set these private and make getters/setters
@@ -12,7 +14,7 @@ pub struct CPU {
     pub state: u8, // bit flags: NV-BDIZC where N=negative V=overflow, B=break, D=decimal mode, I=interrupt, Z=zero, C=carry
     pub program_counter: u16,
     pub stack_ptr: u8,
-    memory: [u8; 0xFFFF] //64kb long array
+    pub bus: Bus,
 }
 
 impl CPU {
@@ -24,33 +26,26 @@ impl CPU {
             state: 0b0010_0000, // 5th bit always set
             program_counter: 0,
             stack_ptr: 0,
-            memory: [0; 0xFFFF]
+            bus: Bus::new(),
         }
     }
     
     //-- Memory read and write methods
 
     pub fn mem_read(&self, address: u16) -> u8 {
-        self.memory[address as usize]
+        self.bus.mem_read(address)
     }
 
     pub fn mem_write(&mut self, address: u16, value:u8) {
-        self.memory[address as usize] = value;
+        self.bus.mem_write(address, value);
     }
 
     pub fn mem_read_u16(&self, address: u16) -> u16 {
-        let low_byte: u16 = self.mem_read(address) as u16 & 0b0000_0000_1111_1111;
-        let high_byte: u16 = (self.mem_read(address.wrapping_add(1)) as u16) << 8;
-
-        high_byte | low_byte
+        self.bus.mem_read_u16(address)
     }
 
     pub fn mem_write_u16(&mut self, address: u16, value: u16) {
-        let high_byte: u8 = (value >> 8) as u8;
-        let low_byte: u8 = (value & 0b0000_0000_1111_1111) as u8;
-
-        self.mem_write(address, low_byte);
-        self.mem_write(address.wrapping_add(1), high_byte);
+        self.bus.mem_write_u16(address, value);
     }
 
     //-- Core CPU methods
@@ -66,7 +61,9 @@ impl CPU {
 
     pub fn load(&mut self, program: Vec<u8>) {
         // Load the program starting at 0x8000 since that's where program ROM is allocated according to NES specs
-        self.memory[0x8000 .. (0x8000 + program.len())].copy_from_slice(&program[..]);
+        for i in 0..program.len() {
+            self.mem_write(0x8000 + i as u16, program[i]);
+        }
         self.mem_write_u16(0xFFFC, 0x8000);
     }
 
@@ -80,7 +77,9 @@ impl CPU {
     where F: FnMut(&mut CPU),
     {
         // Seperate function for the snake game since it expects the program code to be in a different location
-        self.memory[0x0600 .. (0x0600 + program.len())].copy_from_slice(&program[..]);
+        for i in 0..program.len() {
+            self.mem_write(0x0600 + i as u16, program[i]);
+        }
         self.mem_write_u16(0xFFFC, 0x0600);
         self.reset();
         self.run_with_callback(callback);
@@ -775,7 +774,7 @@ mod test {
     #[test]
     fn test_0xa5_lda_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x09; // Assign value 9 to memory location 0x05
+        cpu.mem_write(0x05, 0x09); // Assign value 9 to memory location 0x05
         cpu.load_and_run(vec![0xa5, 0x05, 0x00]); // Load value at memory location 0x05 using lda
         assert_eq!(cpu.reg_a, 0x09);
     }
@@ -783,7 +782,7 @@ mod test {
     #[test]
     fn test_0xb5_lda_zero_page_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x09] = 0x07; // Assign value 7 to memory location 0x09 (0x05 + 0x04)
+        cpu.mem_write(0x09, 0x07); // Assign value 7 to memory location 0x09 (0x05 + 0x04)
         cpu.load_and_run(vec![0xa2, 0x05, 0xb5, 0x04, 0x00]); // Load 0x05 into reg_x, then load A with the value stored at 0x04 + reg_x (0x04+0x05=0x09) which has value 7
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -791,7 +790,7 @@ mod test {
     #[test]
     fn test_0xad_lda_absolute() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x07;
+        cpu.mem_write(0x1000, 0x07);
         cpu.load_and_run(vec![0xad, 0x00, 0x10, 0x00]); // LDA $1000 (little endian so its bytes 0x00 and then 0x10)
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -799,7 +798,7 @@ mod test {
     #[test]
     fn test_0xad_lda_absolute_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa2, 0x05, 0xbd, 0x00, 0x10, 0x00]); //Load 0x05 into reg_x then LDA $1000,X (0x1000+0x0005=0x1005)
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -807,7 +806,7 @@ mod test {
     #[test]
     fn test_0xad_lda_absolute_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa0, 0x05, 0xb9, 0x00, 0x10, 0x00]); //Load 0x05 into reg_y then LDA $1000,Y (0x1000+0x0005=0x1005)
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -815,10 +814,10 @@ mod test {
     #[test]
     fn test_0xad_lda_indirect_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         // Little endian storage of address 1005 (least significant [0x05] first then most [0x10])
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
         cpu.load_and_run(vec![0xa2, 0x05, 0xa1, 0x05, 0x00]); //Load 0x05 into reg_x then LDA ($05,X) (0x05 + 0x05 = 0x0a => address referenced at 0x0a = 0x1005)
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -826,11 +825,11 @@ mod test {
     #[test]
     fn test_0xad_lda_indirect_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x100a] = 0x07;
+        cpu.mem_write(0x100c, 0x07);
         // Little endian storage of address 1005 (least significant [0x05] first then most [0x10])
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
-        cpu.load_and_run(vec![0xa0, 0x05, 0xb1, 0x0a, 0x00]); //Load 0x05 into reg_y then LDA ($0a),Y (addr referenced at 0x0a => 0x1005, add x (0x05) => 0x100a)
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
+        cpu.load_and_run(vec![0xa0, 0x07, 0xb1, 0x0a, 0x00]); //Load 0x07 into reg_y then LDA ($0a),Y (addr referenced at 0x0a => 0x1005, add x (0x05) => 0x100c)
         assert_eq!(cpu.reg_a, 0x07);
     }
 
@@ -862,7 +861,7 @@ mod test {
     #[test]
     fn test_0xa6_ldx_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x09; // Assign value 9 to memory location 0x05
+        cpu.mem_write(0x05, 0x09); // Assign value 9 to memory location 0x05
         cpu.load_and_run(vec![0xa6, 0x05, 0x00]); // Load value at memory location 0x05 using lda
         assert_eq!(cpu.reg_x, 0x09);
     }
@@ -870,7 +869,7 @@ mod test {
     #[test]
     fn test_0xb6_ldx_zero_page_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x09] = 0x07; // Assign value 7 to memory location 0x09 (0x05 + 0x04)
+        cpu.mem_write(0x09, 0x07); // Assign value 7 to memory location 0x09 (0x05 + 0x04)
         cpu.load_and_run(vec![0xa0, 0x05, 0xb6, 0x04, 0x00]); // Load 0x05 into reg_y, then load A with the value stored at 0x04 + reg_y (0x04+0x05=0x09) which has value 7
         assert_eq!(cpu.reg_x, 0x07);
     }
@@ -878,7 +877,7 @@ mod test {
     #[test]
     fn test_0xae_ldx_absolute() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x07;
+        cpu.mem_write(0x1000, 0x07);
         cpu.load_and_run(vec![0xae, 0x00, 0x10, 0x00]); // LDX $1000 (little endian so its bytes 0x00 and then 0x10)
         assert_eq!(cpu.reg_x, 0x07);
     }
@@ -886,7 +885,7 @@ mod test {
     #[test]
     fn test_0xbe_ldx_absolute_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa0, 0x05, 0xbe, 0x00, 0x10, 0x00]); //Load 0x05 into reg_y then LDX $1000,Y (0x1000+0x0005=0x1005)
         assert_eq!(cpu.reg_x, 0x07);
     }
@@ -905,7 +904,7 @@ mod test {
     #[test]
     fn test_0xa4_ldy_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x09;
+        cpu.mem_write(0x05, 0x09);
         cpu.load_and_run(vec![0xa4, 0x05, 0x00]);
         assert_eq!(cpu.reg_y, 0x09);
     }
@@ -913,7 +912,7 @@ mod test {
     #[test]
     fn test_0xb4_lda_zero_page_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x09] = 0x07;
+        cpu.mem_write(0x09, 0x07);
         cpu.load_and_run(vec![0xa2, 0x05, 0xb4, 0x04, 0x00]);
         assert_eq!(cpu.reg_y, 0x07);
     }
@@ -921,7 +920,7 @@ mod test {
     #[test]
     fn test_0xac_ldy_absolute() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x07;
+        cpu.mem_write(0x1000, 0x07);
         cpu.load_and_run(vec![0xac, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_y, 0x07);
     }
@@ -929,7 +928,7 @@ mod test {
     #[test]
     fn test_0xbc_ldy_absolute_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa2, 0x05, 0xbc, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_y, 0x07);
     }
@@ -1016,7 +1015,7 @@ mod test {
     #[test]
     fn test_0x65_adc_immediate_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x09;
+        cpu.mem_write(0x05, 0x09);
         cpu.load_and_run(vec![0x65, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x09);
         assert!(!cpu.is_zero_flag_set());
@@ -1028,7 +1027,7 @@ mod test {
     #[test]
     fn test_0x75_adc_immediate_zero_page_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x09] = 0x07;
+        cpu.mem_write(0x09, 0x07);
         cpu.load_and_run(vec![0xa2, 0x05, 0x75, 0x04, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
         assert!(!cpu.is_zero_flag_set());
@@ -1040,7 +1039,7 @@ mod test {
     #[test]
     fn test_0x6d_adc_immediate_absolute() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x07;
+        cpu.mem_write(0x1000, 0x07);
         cpu.load_and_run(vec![0x6d, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
         assert!(!cpu.is_zero_flag_set());
@@ -1052,7 +1051,7 @@ mod test {
     #[test]
     fn test_0x7d_adc_immediate_absolute_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa2, 0x05, 0x7d, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
         assert!(!cpu.is_zero_flag_set());
@@ -1064,7 +1063,7 @@ mod test {
     #[test]
     fn test_0x79_adc_immediate_absolute_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
+        cpu.mem_write(0x1005, 0x07);
         cpu.load_and_run(vec![0xa0, 0x05, 0x79, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
         assert!(!cpu.is_zero_flag_set());
@@ -1076,9 +1075,9 @@ mod test {
     #[test]
     fn test_0x61_adc_immediate_indirect_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x07;
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
+        cpu.mem_write(0x1005, 0x07);
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
         cpu.load_and_run(vec![0xa2, 0x05, 0x61, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
     }
@@ -1086,10 +1085,10 @@ mod test {
     #[test]
     fn test_0x71_lda_indirect_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x100a] = 0x07;
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
-        cpu.load_and_run(vec![0xa0, 0x05, 0x71, 0x0a, 0x00]);
+        cpu.mem_write(0x100c, 0x07);
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
+        cpu.load_and_run(vec![0xa0, 0x07, 0x71, 0x0a, 0x00]);
         assert_eq!(cpu.reg_a, 0x07);
     }
 
@@ -1107,7 +1106,7 @@ mod test {
     #[test]
     fn test_0x25_and_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x0F;
+        cpu.mem_write(0x05, 0x0F);
         cpu.load_and_run(vec![0xa9, 0xff, 0x25, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1117,7 +1116,7 @@ mod test {
     #[test]
     fn test_0x35_and_zero_page_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x09] = 0x0F;
+        cpu.mem_write(0x09, 0x0F);
         cpu.load_and_run(vec![0xa2, 0x04, 0xa9, 0xff, 0x35, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1127,7 +1126,7 @@ mod test {
     #[test]
     fn test_0x2d_and_absolute() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x0F;
+        cpu.mem_write(0x1000, 0x0F);
         cpu.load_and_run(vec![0xa9, 0xff, 0x2d, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1137,7 +1136,7 @@ mod test {
     #[test]
     fn test_0x3d_and_absolute_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x0F;
+        cpu.mem_write(0x1005, 0x0F);
         cpu.load_and_run(vec![0xa2, 0x05, 0xa9, 0xff, 0x3d, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1147,7 +1146,7 @@ mod test {
     #[test]
     fn test_0x39_and_absolute_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x0F;
+        cpu.mem_write(0x1005, 0x0F);
         cpu.load_and_run(vec![0xa0, 0x05, 0xa9, 0xff, 0x39, 0x00, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1157,9 +1156,9 @@ mod test {
     #[test]
     fn test_0x21_and_indirect_x() {
         let mut cpu = CPU::new();
-        cpu.memory[0x1005] = 0x0F;
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
+        cpu.mem_write(0x1005, 0x0F);
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
         cpu.load_and_run(vec![0xa2, 0x05, 0xa9, 0xff, 0x21, 0x05, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
@@ -1169,10 +1168,10 @@ mod test {
     #[test]
     fn test_0x31_and_indirect_y() {
         let mut cpu = CPU::new();
-        cpu.memory[0x100a] = 0x0F;
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
-        cpu.load_and_run(vec![0xa0, 0x05, 0xa9, 0xff, 0x31, 0x0a, 0x00]);
+        cpu.mem_write(0x100c, 0x0F);
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
+        cpu.load_and_run(vec![0xa0, 0x07, 0xa9, 0xff, 0x31, 0x0a, 0x00]);
         assert_eq!(cpu.reg_a, 0x0F);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
@@ -1211,9 +1210,9 @@ mod test {
     #[test]
     fn test_0x06_asl_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x01;
+        cpu.mem_write(0x05, 0x01);
         cpu.load_and_run(vec![0x06, 0x05, 0x00]);
-        assert_eq!(cpu.memory[0x05], 0x02);
+        assert_eq!(cpu.mem_read(0x05), 0x02);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_carry_flag_set());
@@ -1383,7 +1382,7 @@ mod test {
     fn test_0x24_bit_result_zero() {
         //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x00;
+        cpu.mem_write(0x05, 0x00);
         cpu.load_and_run(vec![0xa9, 0xFF, 0x24, 0x05]);
         assert_eq!(cpu.reg_a, 0xFF);
         assert!(cpu.is_zero_flag_set());
@@ -1395,7 +1394,7 @@ mod test {
     fn test_0x2c_bit_overflow_flag_set() {
         //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x40; // 0100_0000
+        cpu.mem_write(0x1000, 0x40); // 0100_0000
         cpu.load_and_run(vec![0xa9, 0xFF, 0x2c, 0x00, 0x10]);
         assert_eq!(cpu.reg_a, 0xFF);
         assert!(!cpu.is_zero_flag_set());
@@ -1407,7 +1406,7 @@ mod test {
     fn test_0x2c_bit_negative_flag_set() {
         //LDA 0x00 to set the zero flag, better to use CMP in the future when implemented
         let mut cpu = CPU::new();
-        cpu.memory[0x1000] = 0x80; // 1000_0000
+        cpu.mem_write(0x1000, 0x80); // 1000_0000
         cpu.load_and_run(vec![0xa9, 0xFF, 0x2c, 0x00, 0x10]);
         assert_eq!(cpu.reg_a, 0xFF);
         assert!(!cpu.is_zero_flag_set());
@@ -1569,7 +1568,7 @@ mod test {
     fn test_0x85_sta_zero_page_store_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.mem_read(0x0f), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
@@ -1577,7 +1576,7 @@ mod test {
     fn test_0x95_sta_zero_page_x_store_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x02, 0x95, 0x0d, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.mem_read(0x0f), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
@@ -1585,7 +1584,7 @@ mod test {
     fn test_0x8d_sta_absolute_store_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x8d, 0x00, 0x10, 0x00]);
-        assert_eq!(cpu.memory[0x1000], 0x05);
+        assert_eq!(cpu.mem_read(0x1000), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
@@ -1593,7 +1592,7 @@ mod test {
     fn test_0x9d_sta_absolute_x_store_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x02, 0x9d, 0x00, 0x10, 0x00]);
-        assert_eq!(cpu.memory[0x1002], 0x05);
+        assert_eq!(cpu.mem_read(0x1002), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
@@ -1601,27 +1600,27 @@ mod test {
     fn test_0x99_sta_absolute_y_store_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0xa0, 0x02, 0x99, 0x00, 0x10, 0x00]);
-        assert_eq!(cpu.memory[0x1002], 0x05);
+        assert_eq!(cpu.mem_read(0x1002), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
     #[test]
     fn test_0x81_sta_indirect_x_store_accumulator() {
         let mut cpu = CPU::new();
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
         cpu.load_and_run(vec![0xa9, 0x05, 0xa2, 0x05, 0x81, 0x05, 0x00]);
-        assert_eq!(cpu.memory[0x1005], 0x05);
+        assert_eq!(cpu.mem_read(0x1005), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
     #[test]
     fn test_0x91_sta_indirect_y_store_accumulator() {
         let mut cpu = CPU::new();
-        cpu.memory[0x000a] = 0x05;
-        cpu.memory[0x000b] = 0x10;
+        cpu.mem_write(0x000a, 0x05);
+        cpu.mem_write(0x000b, 0x10);
         cpu.load_and_run(vec![0xa9, 0x05, 0xa0, 0x05, 0x91, 0x0a, 0x00]);
-        assert_eq!(cpu.memory[0x100a], 0x05);
+        assert_eq!(cpu.mem_read(0x100a), 0x05);
         assert_eq!(cpu.reg_a, 0x05);
     }
 
@@ -1630,7 +1629,7 @@ mod test {
     fn test_0x86_stx_zero_page_store_reg_x() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2, 0x05, 0x86, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.mem_read(0x0f), 0x05);
         assert_eq!(cpu.reg_x, 0x05);
     }
 
@@ -1639,7 +1638,7 @@ mod test {
     fn test_0x84_sty_zero_age_store_reg_y() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa0, 0x05, 0x84, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x05);
+        assert_eq!(cpu.mem_read(0x0f), 0x05);
         assert_eq!(cpu.reg_y, 0x05);
     }
 
@@ -1648,7 +1647,7 @@ mod test {
     fn test_0xc6_dec_zero_page_normal_decrement() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x04);
+        assert_eq!(cpu.mem_read(0x0f), 0x04);
         assert_eq!(cpu.reg_a, 0x05);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
@@ -1658,7 +1657,7 @@ mod test {
     fn test_0xc6_dec_zero_page_decrement_to_zero() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x01, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0x00);
+        assert_eq!(cpu.mem_read(0x0f), 0x00);
         assert_eq!(cpu.reg_a, 0x01);
         assert!(cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
@@ -1668,7 +1667,7 @@ mod test {
     fn test_0xc6_dec_zero_page_decrement_to_negative() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0x85, 0x0f, 0xc6, 0x0f, 0x00]);
-        assert_eq!(cpu.memory[0x0f], 0xFF);
+        assert_eq!(cpu.mem_read(0x0f), 0xFF);
         assert_eq!(cpu.reg_a, 0x00);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
@@ -1735,7 +1734,7 @@ mod test {
     fn test_0xe6_inc_zero_page_normal_increment() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x05, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // Store 0x05 in memory 0x0f then increment
-        assert_eq!(cpu.memory[0x0f], 0x06);
+        assert_eq!(cpu.mem_read(0x0f), 0x06);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
     }
@@ -1744,7 +1743,7 @@ mod test {
     fn test_0xe6_inc_zero_page_increment_to_zero() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0xFF, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // 0xFF +1 => 0x00
-        assert_eq!(cpu.memory[0x0f], 0x00);
+        assert_eq!(cpu.mem_read(0x0f), 0x00);
         assert!(cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
     }
@@ -1753,7 +1752,7 @@ mod test {
     fn test_0xe6_inc_zero_page_increment_to_negative() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x7F, 0x85, 0x0f, 0xe6, 0x0f, 0x00]); // 01111111 +1 => 1000_0000
-        assert_eq!(cpu.memory[0x0f], 0x80);
+        assert_eq!(cpu.mem_read(0x0f), 0x80);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
     }
@@ -1834,8 +1833,8 @@ mod test {
     #[test]
     fn test_0x6c_jmp_normal_jump_indirect() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x1000] = 0x00;
-        cpu.memory[0x1001] = 0x20;
+        cpu.mem_write(0x1000, 0x00);
+        cpu.mem_write(0x1001, 0x20);
         let program: Vec<u8> = vec![0x6c, 0x00, 0x10];
         cpu.load_and_run(program);
 
@@ -1845,11 +1844,12 @@ mod test {
     #[test]
     fn test_0x6c_jmp_normal_jump_indirect_boundary_bug() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x1050] = 0x00;
-        cpu.memory[0x1051] = 0x20;
+        cpu.mem_write(0x1050, 0x00);
+        cpu.mem_write(0x1051, 0x20);
 
-        cpu.memory[0x1000] = 0x10;
-        cpu.memory[0x10FF] = 0x50;
+        cpu.mem_write(0x1000, 0x10);
+        cpu.mem_write(0x10FF, 0x50);
+
         // Instead of loading addresses at $10FF and $1100 where 10FF is the lowbyte and 1100 is the high byte
         // It's loading the low byte from $10ff and the high byte from $1000 therefore reading the address stored at $1050
         let program: Vec<u8> = vec![0x6c, 0xFF, 0x10];
@@ -1868,8 +1868,8 @@ mod test {
         // Program counter starts at 0x8000, we read 3 bytes so its 8003 when we finish the JSR command but we push the pc minus 1
         // Therefore we should see the high byte 0x80 in the stack followed by the low byte 0x02
         // The program counter should also be at 10001
-        assert_eq!(cpu.memory[0x01FF], 0x80);
-        assert_eq!(cpu.memory[0x01FE], 0x02);
+        assert_eq!(cpu.mem_read(0x01FF), 0x80);
+        assert_eq!(cpu.mem_read(0x01FE), 0x02);
         assert_eq!(cpu.program_counter, 0x1001);
     }
 
@@ -1887,9 +1887,9 @@ mod test {
     #[test]
     fn test_0x46_lsr_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x02;
+        cpu.mem_write(0x05, 0x02);
         cpu.load_and_run(vec![0x46, 0x05, 0x00]);
-        assert_eq!(cpu.memory[0x05], 0x01);
+        assert_eq!(cpu.mem_read(0x05), 0x01);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_carry_flag_set());
@@ -1960,7 +1960,7 @@ mod test {
         let program: Vec<u8> = vec![0xa9, 0x80, 0x48, 0x00];
         cpu.load_and_run(program);
 
-        assert_eq!(cpu.memory[0x01FF], 0x80);
+        assert_eq!(cpu.mem_read(0x01FF), 0x80);
     }
 
     // ---------- PHP tests
@@ -1971,7 +1971,7 @@ mod test {
         cpu.load_and_run(program);
 
         // Stack should contain: 0011_1101
-        assert_eq!(cpu.memory[0x01FF], 0x3D);
+        assert_eq!(cpu.mem_read(0x01FF), 0x3D);
     }
 
     // ---------- PLA tests
@@ -2011,9 +2011,9 @@ mod test {
     #[test]
     fn test_0x26_rol_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x02;
+        cpu.mem_write(0x05, 0x02);
         cpu.load_and_run(vec![0x26, 0x05, 0x00]);
-        assert_eq!(cpu.memory[0x05], 0x04);
+        assert_eq!(cpu.mem_read(0x05), 0x04);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_carry_flag_set());
@@ -2073,9 +2073,9 @@ mod test {
     #[test]
     fn test_0x66_ror_zero_page() {
         let mut cpu = CPU::new();
-        cpu.memory[0x05] = 0x02;
+        cpu.mem_write(0x05, 0x02);
         cpu.load_and_run(vec![0x66, 0x05, 0x00]);
-        assert_eq!(cpu.memory[0x05], 0x01);
+        assert_eq!(cpu.mem_read(0x05), 0x01);
         assert!(!cpu.is_zero_flag_set());
         assert!(!cpu.is_negative_flag_set());
         assert!(!cpu.is_carry_flag_set());
@@ -2133,7 +2133,7 @@ mod test {
     #[test]
     fn test_0x60_rts_jump_then_return_from_jump() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x1000] = 0x60;
+        cpu.mem_write(0x1000, 0x60);
         let program: Vec<u8> = vec![0x20, 0x00, 0x10, 0x00];
         cpu.load_and_run(program);
 

@@ -1,8 +1,9 @@
 mod AddressingModes;
 mod OpCodes;
-mod cpu;
+mod CPU;
+mod bus;
+mod memory;
 
-use cpu::CPU;
 use event::Event;
 use keyboard::Keycode;
 use pixels::{Color, PixelFormatEnum};
@@ -55,7 +56,7 @@ fn snake_game() {
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::rng();
 
-    let mut cpu: CPU = CPU::new();
+    let mut cpu: CPU::CPU = CPU::CPU::new();
 
     cpu.load_and_run_snake_game(game_code, move |cpu| {
         handle_user_input(cpu, &mut event_pump);
@@ -73,7 +74,7 @@ fn snake_game() {
 
 }
 
-fn handle_user_input(cpu: &mut CPU, event_pump: &mut EventPump) {
+fn handle_user_input(cpu: &mut CPU::CPU, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
         match event {
             Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -110,7 +111,7 @@ fn handle_user_input(cpu: &mut CPU, event_pump: &mut EventPump) {
     }
  }
  
- fn read_screen_state(cpu: &CPU, frame: &mut [u8; 32 * 3 * 32]) -> bool {
+ fn read_screen_state(cpu: &CPU::CPU, frame: &mut [u8; 32 * 3 * 32]) -> bool {
     let mut frame_idx = 0;
     let mut update = false;
     for i in 0x0200..0x600 {
