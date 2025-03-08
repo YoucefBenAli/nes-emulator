@@ -40,10 +40,11 @@ fn snake_game() {
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::rng();
 
-    let cartridge: Rom = Rom::new(&get_file_as_byte_vec(&"./snake.nes".to_string())).unwrap();
+    let cartridge: Rom = Rom::new(&get_file_as_byte_vec(&"snake.nes".to_string())).unwrap();
     let bus: Bus = Bus::new(cartridge);
 
     let mut cpu: CPU::CPU = CPU::CPU::new(bus);
+    cpu.reset();
 
     cpu.run_with_callback(move |cpu| {
         handle_user_input(cpu, &mut event_pump);
