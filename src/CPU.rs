@@ -91,9 +91,6 @@ impl CPU {
     }
 
     pub fn trace(&self) -> String {
-        if (self.program_counter == 0xCFBF) {
-            println!("Here");
-        }
         let curr_instruction: u8 = self.mem_read(self.program_counter);
         let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect(&format!("Instruction: {curr_instruction} not found"));
         let opcodes: Vec<u8> = {
@@ -131,7 +128,7 @@ impl CPU {
             },
             AddressingMode::ZeroPage_X => {
                 let zero_page: u8 = self.mem_read(incremented_program_counter);
-                format!("${:02X},X  @ {:02X} = {:02X}",
+                format!("${:02X},X @ {:02X} = {:02X}",
                 zero_page, memory_address, value_stored_at_address)
             },
             AddressingMode::ZeroPage_Y => {
@@ -175,7 +172,7 @@ impl CPU {
             AddressingMode::Indirect_Y => {
                 let indirect_addr: u8 = self.mem_read(incremented_program_counter);
                 let referenced_addr: u16 = self.mem_read_u16(indirect_addr as u16);
-                format!("(${:02X}),Y = {:04x} @ {:04x} = {:02x}",
+                format!("(${:02X}),Y = {:04x} @ {:04x} = {:02X}",
                 indirect_addr, referenced_addr, memory_address, value_stored_at_address)
             },
             AddressingMode::NoneAddressing => {
@@ -2036,15 +2033,14 @@ mod test {
     #[test]
     fn test_0x6c_jmp_normal_jump_indirect_boundary_bug() {
         // Instead of loading addresses at $10FF and $1100 where 10FF is the lowbyte and 1100 is the high byte
-        // It's loading the low byte from $10ff and the high byte from $1000 therefore reading the address stored at $1050
+        // It's loading the low byte from $10ff and the high byte from $1000 therefore returning the address $1050
         // JMP ($10FF) => Jump to Address (Indirect with Boundary Bug)
         let mut cpu = convert_program_to_cpu(vec![0x6c, 0xFF, 0x10]);
-        cpu.mem_write(0x1050, 0x00);
         cpu.mem_write(0x1051, 0x20);
         cpu.mem_write(0x1000, 0x10);
         cpu.mem_write(0x10FF, 0x50);
         cpu.run();
-        assert_eq!(cpu.program_counter, 0x2001);
+        assert_eq!(cpu.program_counter, 0x1051);
     }
 
     // ---------- JSR tests

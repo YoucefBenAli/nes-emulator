@@ -24,14 +24,12 @@ impl AddressingMode {
             AddressingMode::Immediate => program_counter,
             AddressingMode::ZeroPage => cpu.mem_read(program_counter) as u16,
             AddressingMode::ZeroPage_X => {
-                let zero_page: u16 = cpu.mem_read(program_counter) as u16;
-                let x: u16 = cpu.reg_x as u16;
-                zero_page.wrapping_add(x)
+                let zero_page: u8 = cpu.mem_read(program_counter);
+                zero_page.wrapping_add(cpu.reg_x) as u16
             },
             AddressingMode::ZeroPage_Y => {
-                let zero_page: u16 = cpu.mem_read(program_counter) as u16;
-                let y: u16 = cpu.reg_y as u16;
-                zero_page.wrapping_add(y)
+                let zero_page: u8 = cpu.mem_read(program_counter);
+                zero_page.wrapping_add(cpu.reg_y) as u16
             },
             AddressingMode::Absolute => cpu.mem_read_u16(program_counter),
             AddressingMode::Absolute_X => {
@@ -59,22 +57,31 @@ impl AddressingMode {
                 if (low_byte == 0xFF) { // Page boundary
                     let dereferenced_low_byte = cpu.mem_read(addr) as u16;
                     let dereferenced_high_byte = (cpu.mem_read(addr & 0b1111_1111_0000_0000) as u16) << 8;
-                    return cpu.mem_read_u16(dereferenced_high_byte | dereferenced_low_byte);
+                    dereferenced_high_byte | dereferenced_low_byte
                 } else {
                     let dereferenced_addr: u16 = cpu.mem_read_u16(addr);
-                    return dereferenced_addr;
+                    dereferenced_addr
                 }
     
             },
             AddressingMode::Indirect_X => {
-                let addr: u16 = cpu.mem_read(program_counter) as u16;
-                let added_addr: u16 = addr.wrapping_add(cpu.reg_x as u16);
+                let addr: u8 = cpu.mem_read(program_counter);
+                let added_addr: u8 = addr.wrapping_add(cpu.reg_x);
     
-                cpu.mem_read_u16(added_addr)
+                //cpu.mem_read_u16(added_addr) Can't use read_u16 because if we read at the boundary FF then the next address should be 00 not 100
+                let low_byte: u16 = cpu.mem_read(added_addr as u16) as u16 & 0b0000_0000_1111_1111;
+                let high_byte: u16 = (cpu.mem_read(added_addr.wrapping_add(1) as u16) as u16) << 8;
+        
+                high_byte | low_byte
+        
             },
             AddressingMode::Indirect_Y => {
-                let addr: u16 = cpu.mem_read(program_counter) as u16;
-                let dereferenced_addr: u16 = cpu.mem_read_u16(addr);
+                let addr: u8 = cpu.mem_read(program_counter);
+                //let dereferenced_addr: u16 = cpu.mem_read_u16(addr); Can't use read_u16 because if we read at the boundary FF then the next address should be 00 not 100
+                let low_byte: u16 = cpu.mem_read(addr as u16) as u16 & 0b0000_0000_1111_1111;
+                let high_byte: u16 = (cpu.mem_read(addr.wrapping_add(1) as u16) as u16) << 8;
+
+                let dereferenced_addr = high_byte | low_byte;
                 
                 dereferenced_addr.wrapping_add(cpu.reg_y as u16) as u16
             },
