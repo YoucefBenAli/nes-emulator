@@ -1,4 +1,5 @@
 use std::ops::Add;
+use hex;
 
 use crate::AddressingModes::AddressingMode;
 use crate::OpCodes::{Mnemonic, OpCode, OPCODES_MAP};
@@ -23,9 +24,9 @@ impl CPU {
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
-            state: 0b0010_0000, // 5th bit always set
+            state: 0b0010_0100,
             program_counter: 0x8000,
-            stack_ptr: 0xFF, // In 6502 the stack pointer always starts at 0x01ff and decrements
+            stack_ptr: 0xFD, // In 6502 the stack pointer always starts at 0x01ff and decrements
             bus: bus,
         }
     }
@@ -53,8 +54,8 @@ impl CPU {
     pub fn reset(&mut self) {
         self.reg_a = 0;
         self.reg_x = 0;
-        self.state = 0b0010_0000; // 5th bit always set
-        self.stack_ptr = 0xFF; // In 6502 the stack pointer always starts at 0x01ff
+        self.state = 0b0010_0100; // 5th bit always set
+        self.stack_ptr = 0xFD; // In 6502 the stack pointer always starts at 0x01ff
 
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
@@ -86,7 +87,122 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
-        self.run_with_callback(|_| {});
+        self.run_with_callback(|_|{});
+    }
+
+    pub fn trace(&self) -> String {
+        if (self.program_counter == 0xCFBF) {
+            println!("Here");
+        }
+        let curr_instruction: u8 = self.mem_read(self.program_counter);
+        let opcode: &OpCode = OPCODES_MAP.get(&curr_instruction).expect(&format!("Instruction: {curr_instruction} not found"));
+        let opcodes: Vec<u8> = {
+            let num_bytes: u16 = opcode.get_num_bytes() as u16;
+            let mut bytes: Vec<u8> = Vec::with_capacity(num_bytes as usize);
+            bytes.push(self.mem_read(self.program_counter));
+
+            for i in 1..num_bytes {
+                bytes.push(self.mem_read(self.program_counter+i));
+            }
+
+            bytes
+        };
+
+        let mneumonic_str: String = opcode.get_instruction().to_string();
+        let (memory_address, value_stored_at_address) = match opcode.get_mode() {
+            AddressingMode::Immediate | AddressingMode::NoneAddressing | AddressingMode::Accumulator => (0,0),
+            _ => {
+                let addr: u16 = opcode.get_mode().get_operand_address_from_program_counter(self.program_counter+1, self);
+                let value: u8 = self.mem_read(addr);
+                (addr, value)
+            }
+        };
+
+        let incremented_program_counter: u16 = self.program_counter +1;
+        let mode: &AddressingMode = opcode.get_mode();
+        let parameter_in_original_assembly_code: String = match mode {
+            AddressingMode::Immediate => {
+                format!("#${:02X}",self.mem_read(incremented_program_counter))
+            },
+            AddressingMode::ZeroPage => {
+                let zero_page: u8 = self.mem_read(incremented_program_counter);
+                format!("${:02X} = {:02X}",
+                zero_page, value_stored_at_address)
+            },
+            AddressingMode::ZeroPage_X => {
+                let zero_page: u8 = self.mem_read(incremented_program_counter);
+                format!("${:02X},X  @ {:02X} = {:02X}",
+                zero_page, memory_address, value_stored_at_address)
+            },
+            AddressingMode::ZeroPage_Y => {
+                let zero_page: u8 = self.mem_read(incremented_program_counter);
+                format!("${:02X},Y @ {:02X} = {:02X}",
+                zero_page, memory_address, value_stored_at_address)
+            },
+            AddressingMode::Absolute => {
+                let absolute: u16 = self.mem_read_u16(incremented_program_counter);
+                match opcode.get_instruction() {
+                    Mnemonic::JMP | Mnemonic::JSR => {
+                        format!("${:04X}",
+                        absolute)
+                    }
+                    _ => {
+                        format!("${:04X} = {:02X}",
+                    absolute, value_stored_at_address)
+                    }
+                }
+            },
+            AddressingMode::Indirect => {
+                let absolute: u16 = self.mem_read_u16(incremented_program_counter);
+                format!("$({:04X}) = {:04X}",
+                absolute, value_stored_at_address)
+            },
+            AddressingMode::Absolute_X => {
+                let absolute: u16 = self.mem_read_u16(incremented_program_counter);
+                format!("${:04X},X @ {:04X} = {:02X}",
+                absolute, memory_address, value_stored_at_address)
+            },
+            AddressingMode::Absolute_Y => {
+                let absolute: u16 = self.mem_read_u16(incremented_program_counter);
+                format!("${:04X},Y @ {:04X} = {:02X}",
+                absolute, memory_address, value_stored_at_address)
+            },
+            AddressingMode::Indirect_X => {
+                let indirect_addr: u8 = self.mem_read(incremented_program_counter);
+                format!("(${:02X},X) @ {:02X} = {:04X} = {:02X}",
+                indirect_addr, indirect_addr.wrapping_add(self.reg_x), memory_address, value_stored_at_address)
+            },
+            AddressingMode::Indirect_Y => {
+                let indirect_addr: u8 = self.mem_read(incremented_program_counter);
+                let referenced_addr: u16 = self.mem_read_u16(indirect_addr as u16);
+                format!("(${:02X}),Y = {:04x} @ {:04x} = {:02x}",
+                indirect_addr, referenced_addr, memory_address, value_stored_at_address)
+            },
+            AddressingMode::NoneAddressing => {
+                String::new()
+            },
+            AddressingMode::Relative => {
+                let jump_to_u16: u16 = self.program_counter.wrapping_add(2).wrapping_add(value_stored_at_address as u16);
+                format!("${:04X}", jump_to_u16)
+            },
+            AddressingMode::Accumulator => {
+                'A'.to_string()
+            },
+        };
+
+        let opcodes_string: String = opcodes
+        .iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<Vec<String>>()
+        .join(" ");
+
+        let instruction_string: String = format!("{:04X}  {:08}  {:03} {}",
+        self.program_counter, opcodes_string, mneumonic_str, parameter_in_original_assembly_code);
+
+        format!("{:47} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        instruction_string, self.reg_a, self.reg_x, self.reg_y, self.state, self.stack_ptr)
+
+
     }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F) 
@@ -252,12 +368,12 @@ impl CPU {
             sum_as_u16 -= 1;
         }
 
-        let sum_as_u8: u8 = sum_as_u16.to_be_bytes()[1];
+        let sum_as_u8: u8 = sum_as_u16 as u8; //gets lower 8 bits during conversion
 
         let carry_flag: bool = self.reg_a >= {param + if self.is_carry_flag_set() {0} else {1}};
         self.set_carry_flag(carry_flag);
         self.set_overflow_flag(
-            ((negative_param ^ sum_as_u8) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
+            ((self.reg_a ^ param) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
         );
         self.set_zero_and_negative_flag(sum_as_u8);
         
@@ -275,7 +391,7 @@ impl CPU {
 
     fn asl(&mut self, mode: &AddressingMode) {
         let param: u8 = match mode {
-            AddressingMode::NoneAddressing => self.reg_a,
+            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
@@ -286,7 +402,7 @@ impl CPU {
         self.set_negative_flag((new_val & 0b1000_0000) != 0);
         self.set_zero_and_negative_flag(new_val);
 
-        if let AddressingMode::NoneAddressing = mode {
+        if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
             self.reg_a = new_val;
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
@@ -296,7 +412,7 @@ impl CPU {
 
     fn lsr(&mut self, mode: &AddressingMode) {
         let param: u8 = match mode {
-            AddressingMode::NoneAddressing => self.reg_a,
+            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
@@ -305,7 +421,7 @@ impl CPU {
         self.set_carry_flag((param & 0b0000_0001) != 0);
         self.set_zero_and_negative_flag(new_val);
 
-        if let AddressingMode::NoneAddressing = mode {
+        if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
             self.reg_a = new_val;
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
@@ -445,7 +561,7 @@ impl CPU {
 
     fn rol(&mut self, mode: &AddressingMode) {
         let param: u8 = match mode {
-            AddressingMode::NoneAddressing => self.reg_a,
+            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
@@ -458,7 +574,7 @@ impl CPU {
         self.set_carry_flag((param & 0b1000_0000) != 0);
         self.set_zero_and_negative_flag(new_val);
 
-        if let AddressingMode::NoneAddressing = mode {
+        if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
             self.reg_a = new_val;
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
@@ -467,7 +583,7 @@ impl CPU {
 
     fn ror(&mut self, mode: &AddressingMode) {
         let param: u8 = match mode {
-            AddressingMode::NoneAddressing => self.reg_a,
+            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
@@ -480,7 +596,7 @@ impl CPU {
         self.set_carry_flag((param & 0b0000_0001) != 0);
         self.set_zero_and_negative_flag(new_val);
 
-        if let AddressingMode::NoneAddressing = mode {
+        if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
             self.reg_a = new_val;
         } else {
             self.mem_write(mode.get_operand_address(&self), new_val);
@@ -494,7 +610,6 @@ impl CPU {
 
     fn txs(&mut self) {
         self.stack_ptr = self.reg_x;
-        self.set_zero_and_negative_flag(self.stack_ptr);
     }
 
     fn txa(&mut self) {
@@ -526,6 +641,8 @@ impl CPU {
 
     fn plp(&mut self) {
         self.state = self.pull_from_stack_u8();
+        self.set_break_flag(false);
+        self.set_bit_5_flag(true);
     }
 
     fn pla(&mut self) {
@@ -695,6 +812,14 @@ impl CPU {
             self.state |= 0b0001_0000;
         } else {
             self.state &= 0b1110_1111;
+        }
+    }
+
+    fn set_bit_5_flag(&mut self, break_flag: bool) {
+        if break_flag {
+            self.state |= 0b0010_0000;
+        } else {
+            self.state &= 0b1101_1111;
         }
     }
 
@@ -1932,8 +2057,8 @@ mod test {
         // JSR $1000 => Jump to Subroutine
         let mut cpu = convert_program_to_cpu(vec![0x20, 0x00, 0x10]);
         cpu.run();
-        assert_eq!(cpu.mem_read(0x01FF), 0x80);
-        assert_eq!(cpu.mem_read(0x01FE), 0x02);
+        assert_eq!(cpu.mem_read(0x01FD), 0x80);
+        assert_eq!(cpu.mem_read(0x01FC), 0x02);
         assert_eq!(cpu.program_counter, 0x1001);
     }
 
@@ -2029,7 +2154,7 @@ mod test {
         // LDA #$80; PHA => Push Accumulator to Stack
         let mut cpu = convert_program_to_cpu(vec![0xa9, 0x80, 0x48, 0x00]);
         cpu.run();
-        assert_eq!(cpu.mem_read(0x01FF), 0x80);
+        assert_eq!(cpu.mem_read(0x01FD), 0x80);
     }
 
     // ---------- PHP tests
@@ -2038,7 +2163,7 @@ mod test {
         // SEC; SED; SEI; PHP => Push Status Flag to Stack
         let mut cpu = convert_program_to_cpu(vec![0x38, 0xf8, 0x78, 0x08, 0x00]);
         cpu.run();
-        assert_eq!(cpu.mem_read(0x01FF), 0x3D);
+        assert_eq!(cpu.mem_read(0x01FD), 0x3D);
     }
 
     // ---------- PLA tests
@@ -2048,7 +2173,7 @@ mod test {
         let mut cpu = convert_program_to_cpu(vec![0xa9, 0x80, 0x48, 0xa9, 0x01, 0x68, 0x00]);
         cpu.run();
         assert_eq!(cpu.reg_a, 0x80);
-        assert_eq!(cpu.stack_ptr, 0xFF);
+        assert_eq!(cpu.stack_ptr, 0xFD);
     }
 
     // ---------- PLP tests
@@ -2287,6 +2412,18 @@ mod test {
         assert!(cpu.is_carry_flag_set());
     }
 
+    #[test]
+    fn test_0xe9_sbc_subtract_zero_with_carry_cause_overflow() {
+        // CLC; LDA #$80; SBC #$00 => Subtract with Carry (Zero Result)
+        let mut cpu = convert_program_to_cpu(vec![0x18, 0xa9, 0x80, 0xe9, 0x00, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.reg_a, 0x7F);
+        assert!(!cpu.is_zero_flag_set());
+        assert!(!cpu.is_negative_flag_set());
+        assert!(cpu.is_overflow_flag_set());
+        assert!(cpu.is_carry_flag_set());
+    }
+
     // ---------- TAY tests
     #[test]
     fn test_0xa8_tay_a_is_zero() {
@@ -2320,11 +2457,11 @@ mod test {
 
     // ---------- TSX tests
     #[test]
-    fn test_0xba_tsx_stack_is_ff() {
+    fn test_0xba_tsx_stack_is_fd() {
         // TSX => Transfer Stack Pointer to X Register (Stack Pointer is FF)
         let mut cpu = convert_program_to_cpu(vec![0xba, 0x00]);
         cpu.run();
-        assert_eq!(cpu.reg_x, 0xFF);
+        assert_eq!(cpu.reg_x, 0xFD);
         assert!(!cpu.is_zero_flag_set());
         assert!(cpu.is_negative_flag_set());
     }
@@ -2346,8 +2483,6 @@ mod test {
         let mut cpu = convert_program_to_cpu(vec![0x9a, 0x00]);
         cpu.run();
         assert_eq!(cpu.stack_ptr, 0x00);
-        assert!(cpu.is_zero_flag_set());
-        assert!(!cpu.is_negative_flag_set());
     }
 
     #[test]

@@ -1,11 +1,13 @@
 use std::{collections::HashMap, ops::Add};
 
 use lazy_static::lazy_static;
+use strum_macros::{AsRefStr, Display};
+
 
 use crate::AddressingModes::AddressingMode;
 use Mnemonic::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, AsRefStr, Display, PartialEq)]
 pub enum Mnemonic {
     BRK,
     TAX,
@@ -163,7 +165,7 @@ lazy_static! {
         OpCode::new(0x21, AND, 2, 6, AddressingMode::Indirect_X),
         OpCode::new(0x31, AND, 2, 5 /*+1 if page crossed*/, AddressingMode::Indirect_Y),
 
-        OpCode::new(0x0a, ASL, 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x0a, ASL, 1, 2, AddressingMode::Accumulator),
         OpCode::new(0x06, ASL, 2, 5, AddressingMode::ZeroPage),
         OpCode::new(0x16, ASL, 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x0e, ASL, 3, 6, AddressingMode::Absolute),
@@ -172,14 +174,14 @@ lazy_static! {
         OpCode::new(0x24, BIT, 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0x2C, BIT, 3, 3, AddressingMode::Absolute),
 
-        OpCode::new(0x30, BMI, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0xD0, BNE, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0x10, BPL, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0x50, BVC, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0x70, BVS, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0x90, BCC, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0xB0, BCS, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
-        OpCode::new(0xF0, BEQ, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Immediate),
+        OpCode::new(0x30, BMI, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0xD0, BNE, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0x10, BPL, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0x50, BVC, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0x70, BVS, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0x90, BCC, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0xB0, BCS, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
+        OpCode::new(0xF0, BEQ, 2, 2 /*(+1 if branch succeeds +2 if to a new page) */, AddressingMode::Relative),
 
         OpCode::new(0x18, CLC, 1, 2, AddressingMode::NoneAddressing),
         OpCode::new(0xD8, CLD, 1, 2, AddressingMode::NoneAddressing),
@@ -248,7 +250,7 @@ lazy_static! {
 
         OpCode::new(0x20, JSR, 3, 6, AddressingMode::Absolute),
 
-        OpCode::new(0x4A, LSR, 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x4A, LSR, 1, 2, AddressingMode::Accumulator),
         OpCode::new(0x46, LSR, 2, 5, AddressingMode::ZeroPage),
         OpCode::new(0x56, LSR, 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x4E, LSR, 3, 6, AddressingMode::Absolute),
@@ -264,13 +266,13 @@ lazy_static! {
 
         OpCode::new(0x28, PLP, 1, 4, AddressingMode::NoneAddressing),
 
-        OpCode::new(0x2A, ROL, 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x2A, ROL, 1, 2, AddressingMode::Accumulator),
         OpCode::new(0x26, ROL, 2, 5, AddressingMode::ZeroPage),
         OpCode::new(0x36, ROL, 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x2E, ROL, 3, 6, AddressingMode::Absolute),
         OpCode::new(0x3E, ROL, 3, 7, AddressingMode::Absolute_X),
 
-        OpCode::new(0x6A, ROR, 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x6A, ROR, 1, 2, AddressingMode::Accumulator),
         OpCode::new(0x66, ROR, 2, 5, AddressingMode::ZeroPage),
         OpCode::new(0x76, ROR, 2, 6, AddressingMode::ZeroPage_X),
         OpCode::new(0x6E, ROR, 3, 6, AddressingMode::Absolute),

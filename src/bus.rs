@@ -4,6 +4,11 @@ use crate::rom::Rom;
 const RAM: u16 = 0x0000;
 const RAM_MIRRORS_END: u16 = 0x1FFF; // CPU RAM 0x0000..0x1FFF
 
+const PROGRAM_MEMORY_START: u16 = 0x8000;
+const PROGRAM_MEMORY_END: u16 = 0xFFFF;
+
+const PPU_REGISTERS: u16 = 0x2000;
+const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 pub struct Bus {
     cpu_ram: [u8; 2048], // 2^11 = 2048, on a real NES only 11 pins used for addressing cpu ram
     rom: Rom,
@@ -34,9 +39,11 @@ impl Memory for Bus {
                 let trimmed_address = address & 0b_0000_0111_1111_1111;
                 self.cpu_ram[trimmed_address as usize]
             },
-
-            0x8000..=0xFFFF => {
+            PROGRAM_MEMORY_START..=PROGRAM_MEMORY_END => {
                 self.read_program_memory(address - 0x8000)
+            },
+            PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
+                0
             },
             _ => {
                 println!("Out of bounds ignoring read at {address}");
@@ -52,7 +59,9 @@ impl Memory for Bus {
                 let trimmed_address = address & 0b_0000_0111_1111_1111;
                 self.cpu_ram[trimmed_address as usize] = value
             },
-
+            PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
+               0;
+            },
             0x8000..=0xFFFF => {
                 panic!("Can't write to read only memory");
             },

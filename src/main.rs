@@ -8,7 +8,7 @@ mod rom;
 use rom::Rom;
 use bus::Bus;
 
-use std::fs::File;
+use std::{env, fs::File};
 use std::io::Read;
 use event::Event;
 use keyboard::Keycode;
@@ -17,7 +17,26 @@ use rand::Rng;
 use sdl2::*;
 
 fn main() {
-    snake_game();
+    let args: Vec<String> = env::args().collect();
+    
+    if args.len() == 0 {
+        snake_game();
+    } else {
+        let file_name: &String = args.get(1).unwrap();
+        run_rom(file_name);
+    }
+}
+
+fn run_rom(file_name: &String) {
+    let cartridge: Rom = Rom::new(&get_file_as_byte_vec(file_name)).unwrap();
+    let bus: Bus = Bus::new(cartridge);
+
+    let mut cpu: CPU::CPU = CPU::CPU::new(bus);
+    cpu.reset();
+    cpu.program_counter = 0xC000;
+    cpu.run_with_callback(move |cpu| {
+        println!("{}", cpu.trace());
+    })
 }
 
 fn snake_game() {
@@ -116,6 +135,6 @@ fn handle_user_input(cpu: &mut CPU::CPU, event_pump: &mut EventPump) {
     update
  }
  
- fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
+fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
     std::fs::read(filename).unwrap()
 }
