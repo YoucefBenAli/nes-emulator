@@ -19,7 +19,7 @@ use sdl2::*;
 fn main() {
     let args: Vec<String> = env::args().collect();
     
-    if args.len() == 0 {
+    if args.len() == 1 { // Cargo run always includes the executable name as an argument
         snake_game();
     } else {
         let file_name: &String = args.get(1).unwrap();
