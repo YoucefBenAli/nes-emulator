@@ -586,11 +586,7 @@ impl CPU {
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
-        let mut new_val: u8 = param >> 1;
-
-        if self.is_carry_flag_set() {
-            new_val = new_val | 0b_1000_0000;
-        }
+        let new_val: u8 = self.rotate_right_through_carry(param);
 
         self.set_carry_flag((param & 0b0000_0001) != 0);
         self.set_zero_and_negative_flag(new_val);
@@ -711,8 +707,54 @@ impl CPU {
         return;
     }
 
+    //-- Illegal CPU Instructions
+    // Reference: https://www.nesdev.org/undocumented_opcodes.txt
+
+    fn anc(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.reg_a &= param;
+        self.set_zero_and_negative_flag(self.reg_a);
+
+        // According to spec need to set carry flag if negative
+        self.set_carry_flag(self.is_negative_flag_set());
+    }
+
+    fn sax(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.mem_write(param as u16, self.reg_a & self.reg_x);
+    }
+
+    fn arr(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.reg_a &= param;
+        self.reg_a = self.rotate_right_through_carry(self.reg_a);
+
+        self.set_zero_and_negative_flag(self.reg_a);
+
+        /*
+        According to instructions: 
+        If both bits are 1: set C, clear V.
+        If both bits are 0: clear C and V.
+        If only bit 5 is 1: set V, clear C.
+        If only bit 6 is 1: set C and V.
+
+        But to make this quicker, notice how bit 6 always controls bit 6
+        And v is just the xor from bit 5 and 6.
+        */
+        self.set_carry_flag((self.reg_a & 0b0100_0000) != 0);
+        
+        let bit_6: u8 = (self.reg_a >> 6) & 1;
+        let bit_5: u8 = (self.reg_a >> 5) & 1;
+        self.set_overflow_flag((bit_6 ^ bit_5) != 0);
+    }
+
 
     //-- Helper methods
+
+    fn rotate_right_through_carry(&self, value: u8) -> u8 {
+        let carry_bit: u8 = if self.is_carry_flag_set() { 0b1000_0000 } else { 0 };
+        (value >> 1) | carry_bit
+    }
 
     fn push_to_stack_u16(&mut self, value:u16) {
 
