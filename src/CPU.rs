@@ -151,8 +151,8 @@ impl CPU {
             },
             AddressingMode::Indirect => {
                 let absolute: u16 = self.mem_read_u16(incremented_program_counter);
-                format!("$({:04X}) = {:04X}",
-                absolute, value_stored_at_address)
+                format!("(${:04X}) = {:04X}",
+                absolute, memory_address)
             },
             AddressingMode::Absolute_X => {
                 let absolute: u16 = self.mem_read_u16(incremented_program_counter);
@@ -171,8 +171,10 @@ impl CPU {
             },
             AddressingMode::Indirect_Y => {
                 let indirect_addr: u8 = self.mem_read(incremented_program_counter);
-                let referenced_addr: u16 = self.mem_read_u16(indirect_addr as u16);
-                format!("(${:02X}),Y = {:04x} @ {:04x} = {:02X}",
+                // Fixing an issue with FF + y reg wrapping back around to 00
+                // Instead of duplicating existing logic for indirect_y addressing, I'll just subtract y
+                let referenced_addr: u16 = memory_address.wrapping_sub(self.reg_y as u16);
+                format!("(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
                 indirect_addr, referenced_addr, memory_address, value_stored_at_address)
             },
             AddressingMode::NoneAddressing => {
