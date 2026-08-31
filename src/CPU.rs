@@ -281,6 +281,8 @@ impl CPU {
                 ARR => self.arr(mode),
                 ALR => self.alr(mode),
                 ISB => self.isb(mode),
+                RRA => self.rra(mode),
+                SLO => self.slo(mode),
 
                 BRK => {
                     break;
@@ -347,22 +349,7 @@ impl CPU {
 
     fn adc(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
-
-        let mut sum_as_u16: u16 = self.reg_a as u16 + param as u16;
-        if self.is_carry_flag_set() {
-            sum_as_u16 += 1;
-        }
-
-        let sum_as_u8: u8 = sum_as_u16.to_be_bytes()[1]; // Get last 8 bits
-
-        self.set_carry_flag(sum_as_u16 > 0b1111_1111);
-        self.set_overflow_flag(
-            ((param ^ sum_as_u8) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
-        );
-        self.set_zero_and_negative_flag(sum_as_u8);
-        
-        self.reg_a = sum_as_u8;
-
+        self.add_to_accumulator(param);
     }
 
     fn sbc(&mut self, mode: &AddressingMode) {
@@ -379,44 +366,23 @@ impl CPU {
     }
 
     fn asl(&mut self, mode: &AddressingMode) {
-        let param: u8 = match mode {
-            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
-            _ => self.mem_read(mode.get_operand_address(&self))
-        };
-
-        let new_val: u8 = param << 1;
-
-        self.set_carry_flag((param & 0b1000_0000) != 0);
-
-        self.set_negative_flag((new_val & 0b1000_0000) != 0);
-        self.set_zero_and_negative_flag(new_val);
-
         if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
-            self.reg_a = new_val;
+            self.reg_a = self.shift_left_and_update_flags(self.reg_a);
         } else {
-            self.mem_write(mode.get_operand_address(&self), new_val);
+            let address = mode.get_operand_address(self);
+            let result = self.shift_left_and_update_flags(self.mem_read(address));
+            self.mem_write(address, result);
         }
-        
     }
 
     fn lsr(&mut self, mode: &AddressingMode) {
-        let param: u8 = match mode {
-            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
-            _ => self.mem_read(mode.get_operand_address(&self))
-        };
-
-        let new_val: u8 = param >> 1;
-
-        self.set_carry_flag((param & 0b0000_0001) != 0);
-        self.set_zero_and_negative_flag(new_val);
-
         if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
-            self.reg_a = new_val;
+            self.reg_a = self.shift_right_and_update_flags(self.reg_a);
         } else {
-            self.mem_write(mode.get_operand_address(&self), new_val);
+            let address = mode.get_operand_address(self);
+            let result = self.shift_right_and_update_flags(self.mem_read(address));
+            self.mem_write(address, result);
         }
-
-        
     }
 
     fn bcc(&mut self, mode: &AddressingMode) {
@@ -549,39 +515,22 @@ impl CPU {
     }
 
     fn rol(&mut self, mode: &AddressingMode) {
-        let param: u8 = match mode {
-            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
-            _ => self.mem_read(mode.get_operand_address(&self))
-        };
-
-        let mut new_val: u8 = param << 1;
-
-        if self.is_carry_flag_set() {
-            new_val = new_val | 0b_0000_0001;
-        }
-
-        self.set_carry_flag((param & 0b1000_0000) != 0);
-        self.set_zero_and_negative_flag(new_val);
-
         if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
-            self.reg_a = new_val;
+            self.reg_a = self.rotate_left_and_update_flags(self.reg_a);
         } else {
-            self.mem_write(mode.get_operand_address(&self), new_val);
+            let address = mode.get_operand_address(self);
+            let result = self.rotate_left_and_update_flags(self.mem_read(address));
+            self.mem_write(address, result);
         }
     }
 
     fn ror(&mut self, mode: &AddressingMode) {
-        let param: u8 = match mode {
-            AddressingMode::NoneAddressing | AddressingMode::Accumulator => self.reg_a,
-            _ => self.mem_read(mode.get_operand_address(&self))
-        };
-
-        let new_val: u8 = self.rotate_right_through_carry_and_update_flags(param);
-
         if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
-            self.reg_a = new_val;
+            self.reg_a = self.rotate_right_and_update_flags(self.reg_a);
         } else {
-            self.mem_write(mode.get_operand_address(&self), new_val);
+            let address = mode.get_operand_address(self);
+            let result = self.rotate_right_and_update_flags(self.mem_read(address));
+            self.mem_write(address, result);
         }
     }
 
@@ -714,7 +663,7 @@ impl CPU {
     fn arr(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
         self.reg_a &= param;
-        self.reg_a = self.rotate_right_through_carry_and_update_flags(self.reg_a);
+        self.reg_a = self.rotate_right_and_update_flags(self.reg_a);
 
 
         /*
@@ -737,7 +686,7 @@ impl CPU {
     fn alr(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
         self.reg_a &= param;
-        self.reg_a = self.rotate_right_through_carry_and_update_flags(self.reg_a);
+        self.reg_a = self.shift_right_and_update_flags(self.reg_a);
     }
 
     fn lxa(&mut self, mode: &AddressingMode) {
@@ -780,7 +729,61 @@ impl CPU {
         self.subtract_from_accumulator(value);
     }
 
+    fn las(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        let res = param & self.stack_ptr;
+        self.reg_a = res;
+        self.reg_x = res;
+        self.stack_ptr = res;
+        self.set_zero_and_negative_flag(res);
+    }
+
+    fn lax(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.reg_a = param;
+        self.reg_x = param;
+        self.set_zero_and_negative_flag(param);
+    }
+
+    fn rla(&mut self, mode: &AddressingMode) {
+        let address = mode.get_operand_address(self);
+        let rotated = self.rotate_left_and_update_flags(self.mem_read(address));
+        self.mem_write(address, rotated);
+        self.reg_a &= rotated;
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn rra(&mut self, mode: &AddressingMode) {
+        let address = mode.get_operand_address(self);
+        let rotated = self.rotate_right_and_update_flags(self.mem_read(address));
+        self.mem_write(address, rotated);
+        // The carry produced by ROR is the carry input to ADC.
+        self.add_to_accumulator(rotated);
+    }
+
+    fn slo(&mut self, mode: &AddressingMode) {
+        let address = mode.get_operand_address(self);
+        let shifted = self.shift_left_and_update_flags(self.mem_read(address));
+        self.mem_write(address, shifted);
+        self.reg_a |= shifted;
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
     //-- Helper methods
+
+    fn add_to_accumulator(&mut self, value: u8) {
+        let carry = if self.is_carry_flag_set() { 1 } else { 0 };
+        let old_a = self.reg_a;
+        let sum = old_a as u16 + value as u16 + carry as u16;
+        let result = sum as u8;
+
+        self.set_carry_flag(sum > 0xFF);
+        self.set_overflow_flag(
+            (!(old_a ^ value) & (old_a ^ result) & 0x80) != 0
+        );
+        self.reg_a = result;
+        self.set_zero_and_negative_flag(result);
+    }
 
     fn subtract_from_accumulator(&mut self, value: u8) {
         let borrow: u16 = if self.is_carry_flag_set() { 0 } else { 1 };
@@ -797,13 +800,38 @@ impl CPU {
         self.set_zero_and_negative_flag(result);
     }
 
-    fn rotate_right_through_carry_and_update_flags(&mut self, value: u8) -> u8 {
-        let carry_bit: u8 = if self.is_carry_flag_set() { 0b1000_0000 } else { 0 };
-        let res: u8 = (value >> 1) | carry_bit;
+    fn shift_left_and_update_flags(&mut self, value: u8) -> u8 {
+        // Uses 0 as new bit
+        let result = value << 1;
+        self.set_carry_flag((value & 0x80) != 0);
+        self.set_zero_and_negative_flag(result);
+        result
+    }
 
-        self.set_carry_flag((value & 0b0000_0001) != 0);
-        self.set_zero_and_negative_flag(res);
-        res
+    fn shift_right_and_update_flags(&mut self, value: u8) -> u8 {
+        // Uses 0 as new bit
+        let result = value >> 1;
+        self.set_carry_flag((value & 0x01) != 0);
+        self.set_zero_and_negative_flag(result);
+        result
+    }
+
+    fn rotate_left_and_update_flags(&mut self, value: u8) -> u8 {
+        // Uses carry as new bit
+        let carry_in = if self.is_carry_flag_set() { 1 } else { 0 };
+        let result = (value << 1) | carry_in;
+        self.set_carry_flag((value & 0x80) != 0);
+        self.set_zero_and_negative_flag(result);
+        result
+    }
+
+    fn rotate_right_and_update_flags(&mut self, value: u8) -> u8 {
+        // Uses carry as new bit
+        let carry_in = if self.is_carry_flag_set() { 0x80 } else { 0 };
+        let result = (value >> 1) | carry_in;
+        self.set_carry_flag((value & 0x01) != 0);
+        self.set_zero_and_negative_flag(result);
+        result
     }
 
     fn push_to_stack_u16(&mut self, value:u16) {
