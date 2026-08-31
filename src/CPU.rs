@@ -673,8 +673,8 @@ impl CPU {
     }
 
     fn sax(&mut self, mode: &AddressingMode) {
-        let param: u8 = self.mem_read(mode.get_operand_address(&self));
-        self.mem_write(param as u16, self.reg_a & self.reg_x);
+        let address: u16 = mode.get_operand_address(&self);
+        self.mem_write(address, self.reg_a & self.reg_x);
     }
 
     fn arr(&mut self, mode: &AddressingMode) {
