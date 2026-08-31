@@ -80,10 +80,9 @@ pub enum Mnemonic {
     RLA,
     RRA,
     SLO,
-    LSE,
-    XAS,
-    SAY,
-    SKW,
+    SRE,
+    SHX,
+    SHY,
     XAA,
     TAS,
 }
@@ -426,26 +425,28 @@ lazy_static! {
         OpCode::new(0x03, SLO, 2, 8, AddressingMode::Indirect_X),
         OpCode::new(0x13, SLO, 2, 8, AddressingMode::Indirect_Y),
 
-        OpCode::new(0x47, LSE, 2, 5, AddressingMode::ZeroPage),
-        OpCode::new(0x57, LSE, 2, 6, AddressingMode::ZeroPage_X),
-        OpCode::new(0x4F, LSE, 3, 6, AddressingMode::Absolute),
-        OpCode::new(0x5F, LSE, 3, 7, AddressingMode::Absolute_X),
-        OpCode::new(0x5B, LSE, 3, 7, AddressingMode::Absolute_Y),
-        OpCode::new(0x43, LSE, 2, 8, AddressingMode::Indirect_X),
-        OpCode::new(0x53, LSE, 2, 8, AddressingMode::Indirect_Y),
+        OpCode::new(0x47, SRE, 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x57, SRE, 2, 6, AddressingMode::ZeroPage_X),
+        OpCode::new(0x4F, SRE, 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x5F, SRE, 3, 7, AddressingMode::Absolute_X),
+        OpCode::new(0x5B, SRE, 3, 7, AddressingMode::Absolute_Y),
+        OpCode::new(0x43, SRE, 2, 8, AddressingMode::Indirect_X),
+        OpCode::new(0x53, SRE, 2, 8, AddressingMode::Indirect_Y),
 
-        OpCode::new(0x9E, XAS, 3, 5, AddressingMode::Absolute_Y),
-        OpCode::new(0x9C, SAY, 3, 5, AddressingMode::Absolute_X),
+        OpCode::new(0x9E, SHX, 3, 5, AddressingMode::Absolute_Y),
+        
+        OpCode::new(0x9C, SHY, 3, 5, AddressingMode::Absolute_X),
 
-        OpCode::new(0x0C, SKW, 3, 4, AddressingMode::Absolute),
-        OpCode::new(0x1C, SKW, 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0x3C, SKW, 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0x5C, SKW, 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0x7C, SKW, 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0xDC, SKW, 3, 4, AddressingMode::Absolute_X),
-        OpCode::new(0xFC, SKW, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0x0C, NOP, 3, 4, AddressingMode::Absolute),
+        OpCode::new(0x1C, NOP, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0x3C, NOP, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0x5C, NOP, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0x7C, NOP, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0xDC, NOP, 3, 4, AddressingMode::Absolute_X),
+        OpCode::new(0xFC, NOP, 3, 4, AddressingMode::Absolute_X),
 
         OpCode::new(0x8B, XAA, 2, 2, AddressingMode::Immediate),
+
         OpCode::new(0x9B, TAS, 3, 5, AddressingMode::Absolute_Y),
     ];
 

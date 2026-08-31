@@ -280,14 +280,25 @@ impl CPU {
                 SAX => self.sax(mode),
                 ARR => self.arr(mode),
                 ALR => self.alr(mode),
+                LXA => self.lxa(mode),
+                AXA => self.axa(mode),
+                AXS => self.axs(mode),
+                DCP => self.dcp(mode),
                 ISB => self.isb(mode),
+                LAS => self.las(mode),
+                LAX => self.lax(mode),
+                RLA => self.rla(mode),
                 RRA => self.rra(mode),
                 SLO => self.slo(mode),
+                SRE => self.sre(mode),
+                SHX => self.shx(mode),
+                SHY => self.shy(mode),
+                XAA => self.xaa(mode),
+                TAS => self.tas(mode),
 
                 BRK => {
                     break;
                 }
-                _ => todo!("Instruction {curr_instruction} hasn't been implemented yet or is invalid")
             }
 
             if initial_program_counter == self.program_counter {
@@ -767,6 +778,51 @@ impl CPU {
         self.mem_write(address, shifted);
         self.reg_a |= shifted;
         self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn sre(&mut self, mode: &AddressingMode) {
+        let address = mode.get_operand_address(self);
+        let shifted = self.shift_right_and_update_flags(self.mem_read(address));
+        self.mem_write(address, shifted);
+        self.reg_a ^= shifted;
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn shx(&mut self, mode: &AddressingMode) {
+        let effective_address = mode.get_operand_address(self);
+        let base_address = effective_address.wrapping_sub(self.reg_y as u16);
+        let mask = ((base_address >> 8) as u8).wrapping_add(1);
+        let value = self.reg_x & mask;
+
+        self.mem_write(effective_address, value);
+    }
+
+    fn shy(&mut self, mode: &AddressingMode) {
+        let effective_address = mode.get_operand_address(self);
+        let base_address = effective_address.wrapping_sub(self.reg_x as u16);
+        let mask = ((base_address >> 8) as u8).wrapping_add(1);
+        let value = self.reg_y & mask;
+
+        self.mem_write(effective_address, value);
+    }
+
+    fn xaa(&mut self, mode: &AddressingMode) {
+        // Really weird instruction
+        // Got spec from here: https://www.masswerk.at/6502/6502_instruction_set.html#ANE
+        let immediate = self.mem_read(mode.get_operand_address(self));
+
+        // A = (A | $FF) & X & immediate = X & immediate.
+        self.reg_a = self.reg_x & immediate;
+        self.set_zero_and_negative_flag(self.reg_a);
+    }
+
+    fn tas(&mut self, mode: &AddressingMode) {
+        let effective_address = mode.get_operand_address(self);
+        let base_address = effective_address.wrapping_sub(self.reg_y as u16);
+        let mask = ((base_address >> 8) as u8).wrapping_add(1);
+
+        self.stack_ptr = self.reg_a & self.reg_x;
+        self.mem_write(effective_address, self.stack_ptr & mask);
     }
 
     //-- Helper methods
