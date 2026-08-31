@@ -275,6 +275,13 @@ impl CPU {
                 TXS => self.txs(),
                 TYA => self.tya(),
 
+                // Unofficial opcodes
+                ANC => self.anc(mode),
+                SAX => self.sax(mode),
+                ARR => self.arr(mode),
+                ALR => self.alr(mode),
+                ISB => self.isb(mode),
+
                 BRK => {
                     break;
                 }
@@ -360,24 +367,7 @@ impl CPU {
 
     fn sbc(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
-        let negative_param: u8 = (!param).wrapping_add(1); // 2's complement
-
-        let mut sum_as_u16: u16 = self.reg_a as u16 + negative_param as u16;
-        if !self.is_carry_flag_set() {
-            sum_as_u16 -= 1;
-        }
-
-        let sum_as_u8: u8 = sum_as_u16 as u8; //gets lower 8 bits during conversion
-
-        let carry_flag: bool = self.reg_a >= {param + if self.is_carry_flag_set() {0} else {1}};
-        self.set_carry_flag(carry_flag);
-        self.set_overflow_flag(
-            ((self.reg_a ^ param) & (self.reg_a ^ sum_as_u8) & 0x80) != 0
-        );
-        self.set_zero_and_negative_flag(sum_as_u8);
-        
-        self.reg_a = sum_as_u8;
-
+        self.subtract_from_accumulator(param);
     }
 
     fn and(&mut self, mode: &AddressingMode) {
@@ -586,10 +576,7 @@ impl CPU {
             _ => self.mem_read(mode.get_operand_address(&self))
         };
 
-        let new_val: u8 = self.rotate_right_through_carry(param);
-
-        self.set_carry_flag((param & 0b0000_0001) != 0);
-        self.set_zero_and_negative_flag(new_val);
+        let new_val: u8 = self.rotate_right_through_carry_and_update_flags(param);
 
         if let AddressingMode::NoneAddressing | AddressingMode::Accumulator = mode {
             self.reg_a = new_val;
@@ -727,9 +714,8 @@ impl CPU {
     fn arr(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(mode.get_operand_address(&self));
         self.reg_a &= param;
-        self.reg_a = self.rotate_right_through_carry(self.reg_a);
+        self.reg_a = self.rotate_right_through_carry_and_update_flags(self.reg_a);
 
-        self.set_zero_and_negative_flag(self.reg_a);
 
         /*
         According to instructions: 
@@ -747,13 +733,77 @@ impl CPU {
         let bit_5: u8 = (self.reg_a >> 5) & 1;
         self.set_overflow_flag((bit_6 ^ bit_5) != 0);
     }
+    
+    fn alr(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.reg_a &= param;
+        self.reg_a = self.rotate_right_through_carry_and_update_flags(self.reg_a);
+    }
 
+    fn lxa(&mut self, mode: &AddressingMode) {
+        self.and(mode);
+        self.tax();
+    }
+
+    fn axa(&mut self, mode: &AddressingMode) {
+        let write_address = mode.get_operand_address(self);
+        let base_addr = write_address.wrapping_sub(self.reg_y as u16);
+        let high_byte_plus_one = ((base_addr >> 8) as u8).wrapping_add(1);
+        self.mem_write(write_address, self.reg_a & self.reg_x & high_byte_plus_one);
+    }
+
+    fn axs(&mut self, mode: &AddressingMode) {
+        let param: u8 = self.mem_read(mode.get_operand_address(&self));
+        self.reg_x &= self.reg_a;
+        let (result, borrowed) = self.reg_x.overflowing_sub(param);
+        self.set_zero_and_negative_flag(self.reg_x);
+        self.set_carry_flag(!borrowed); // If we had to borrow the carry bit, need to update carry flag
+        self.reg_x = result;
+    }
+
+    fn dcp(&mut self, mode: &AddressingMode) {
+        // The spec from https://www.nesdev.org/undocumented_opcodes.txt is wrong
+        // dcp combines DEC and CMP
+        let address = mode.get_operand_address(self);
+        let value = self.mem_read(address);
+        let result = value.wrapping_sub(1);
+
+        self.mem_write(address, result);
+        self.compare(self.reg_a, result);
+    }
+
+    fn isb(&mut self, mode: &AddressingMode) {
+        let address = mode.get_operand_address(self);
+        let value = self.mem_read(address).wrapping_add(1);
+
+        self.mem_write(address, value);
+        self.subtract_from_accumulator(value);
+    }
 
     //-- Helper methods
 
-    fn rotate_right_through_carry(&self, value: u8) -> u8 {
+    fn subtract_from_accumulator(&mut self, value: u8) {
+        let borrow: u16 = if self.is_carry_flag_set() { 0 } else { 1 };
+        let old_a = self.reg_a;
+        let result = old_a
+            .wrapping_sub(value)
+            .wrapping_sub(borrow as u8);
+
+        self.set_carry_flag((old_a as u16) >= (value as u16 + borrow));
+        self.set_overflow_flag(
+            ((old_a ^ value) & (old_a ^ result) & 0x80) != 0
+        );
+        self.reg_a = result;
+        self.set_zero_and_negative_flag(result);
+    }
+
+    fn rotate_right_through_carry_and_update_flags(&mut self, value: u8) -> u8 {
         let carry_bit: u8 = if self.is_carry_flag_set() { 0b1000_0000 } else { 0 };
-        (value >> 1) | carry_bit
+        let res: u8 = (value >> 1) | carry_bit;
+
+        self.set_carry_flag((value & 0b0000_0001) != 0);
+        self.set_zero_and_negative_flag(res);
+        res
     }
 
     fn push_to_stack_u16(&mut self, value:u16) {
