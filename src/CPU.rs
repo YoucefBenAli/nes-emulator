@@ -105,7 +105,12 @@ impl CPU {
             bytes
         };
 
-        let mneumonic_str: String = opcode.get_instruction().to_string();
+        let mnemonic = opcode.get_instruction();
+        let mnemonic_str = if opcode.is_undocumented() {
+            format!("*{}", mnemonic)
+        } else {
+            mnemonic.to_string()
+        };
         let (memory_address, value_stored_at_address) = match opcode.get_mode() {
             AddressingMode::Immediate | AddressingMode::NoneAddressing | AddressingMode::Accumulator => (0,0),
             _ => {
@@ -181,7 +186,8 @@ impl CPU {
                 String::new()
             },
             AddressingMode::Relative => {
-                let jump_to_u16: u16 = self.program_counter.wrapping_add(2).wrapping_add(value_stored_at_address as u16);
+                let offset: i8 = value_stored_at_address as i8; // Need to cast to signed value, later casting as u16 does its 2s complement representation
+                let jump_to_u16: u16 = self.program_counter.wrapping_add(2).wrapping_add(offset as u16);
                 format!("${:04X}", jump_to_u16)
             },
             AddressingMode::Accumulator => {
@@ -195,8 +201,8 @@ impl CPU {
         .collect::<Vec<String>>()
         .join(" ");
 
-        let instruction_string: String = format!("{:04X}  {:08}  {:03} {}",
-        self.program_counter, opcodes_string, mneumonic_str, parameter_in_original_assembly_code);
+        let instruction_string: String = format!("{:04X}  {:08} {:>4} {}",
+        self.program_counter, opcodes_string, mnemonic_str, parameter_in_original_assembly_code);
 
         format!("{:47} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
         instruction_string, self.reg_a, self.reg_x, self.reg_y, self.state, self.stack_ptr)
