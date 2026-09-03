@@ -2,7 +2,7 @@ const PRG_ROM_BANK_SIZE_IN_BYTES: usize = 16384; //16kb = 16*1024
 const CHR_ROM_BANK_SIZE_IN_BYTES: usize = 8192; //8kb = 8*1024
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum MirroringType {
    Vertical,
    Horizontal,

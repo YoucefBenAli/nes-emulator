@@ -4,6 +4,7 @@ mod CPU;
 mod bus;
 mod memory;
 mod rom;
+mod ppu;
 
 use rom::Rom;
 use bus::Bus;
